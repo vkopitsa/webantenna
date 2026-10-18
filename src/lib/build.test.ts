@@ -177,7 +177,10 @@ describe("build pack accuracy", () => {
     expect(row.length).toBeCloseTo(need, 9);
     expect(row.cut).toBeGreaterThanOrEqual(need);                       // "2 % long" is never shorter than the design
     const bom = buildPack(sp.def, sp.p, sp.d).bom.find((r) => r.item.s === "Wire or tube Ø{0}" && Math.abs((r.item.a![0] as { len: number }).len - 0.8e-3) < 1e-9)!;
-    expect((bom.qty.a![1] as { len: number }).len).toBeCloseTo(row.cut, 9);
+    // the radials are cut from the same wire, so the Ø0.8 row is the coil wire plus the four radials
+    const all = buildPack(sp.def, sp.p, sp.d).cuts.filter((c) => Math.abs(c.dia - 0.8e-3) < 1e-9);
+    expect(all.length).toBe(2);
+    expect((bom.qty.a![1] as { len: number }).len).toBeCloseTo(all.reduce((s, c) => s + c.qty * c.cut, 0), 9);
     const hx = build("helix");
     const hrow = buildPack(hx.def, hx.p, hx.d).cuts.find((c) => c.what.s === "Helix wire")!;
     const R = hx.d.dims.find((x) => x.key === "D")!.value / 2;

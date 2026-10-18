@@ -47,6 +47,7 @@ export const UK: Record<string, string> = {
   "Coax velocity factor": "Коефіцієнт укорочення коаксіалу",
   "Solid PE 0.66, foam 0.80–0.85": "Суцільний PE 0.66, спінений 0.80–0.85",
   "Coax outer diameter": "Зовнішній діаметр коаксіалу",
+  "Whip diameter": "Діаметр штиря",
   "Section length (λ/2 × VF), cut braid to braid": "Довжина секції (λ/2 × VF), від обплетення до обплетення",
   "Top whip (λ/4)": "Верхній штир (λ/4)",
   "Overall length": "Загальна довжина",

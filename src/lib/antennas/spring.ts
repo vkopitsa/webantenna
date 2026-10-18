@@ -115,7 +115,7 @@ export const spring: AntennaDef = {
     const rad = 0.25 * lam;
     for (let k = 0; k < 4; k++) {
       const a = (k * Math.PI) / 2 + Math.PI / 4;
-      wires.push({ a: v(0, 0, 0), b: v(rad * Math.cos(a), rad * Math.sin(a), 0), r: Math.max(r, 0.5e-3), group: "ground", tag: k === 0 ? "B" : undefined });
+      wires.push({ a: v(0, 0, 0), b: v(rad * Math.cos(a), rad * Math.sin(a), 0), r, group: "ground", tag: k === 0 ? "B" : undefined });
     }
     const radial = wires.length - 4;
     const turns = pieces / SPRING_SEG, H = turns * S;

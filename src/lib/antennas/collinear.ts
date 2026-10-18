@@ -15,12 +15,13 @@ export const collinear: AntennaDef = {
     { key: "n", label: "Number of λ/2 sections", kind: "int", min: 2, max: 16, step: 1 },
     { key: "vf", label: "Coax velocity factor", kind: "number", min: 0.5, max: 1, step: 0.01, hint: "Solid PE 0.66, foam 0.80–0.85" },
     { key: "od", label: "Coax outer diameter", kind: "length", min: 1e-3, max: 0.03 },
+    { key: "wd", label: "Whip diameter", kind: "length", min: 0.3e-3, max: 10e-3 },
     { key: "rid", label: "Radome inner diameter", kind: "length", min: 8e-3, max: 60e-3, hint: "For the printed spacers" },
   ],
-  defaults: { bands: "863e6-870e6", n: 8, vf: 0.66, od: 5e-3, rid: 20e-3 },
+  defaults: { bands: "863e6-870e6", n: 8, vf: 0.66, od: 5e-3, wd: 2e-3, rid: 20e-3 },
   build(p): Design {
     const { f, sweeps } = band(p);
-    const n = Math.round(num(p, "n", 8)), vf = num(p, "vf", 0.66), od = num(p, "od", 5e-3);
+    const n = Math.round(num(p, "n", 8)), vf = num(p, "vf", 0.66), od = num(p, "od", 5e-3), wd = num(p, "wd", 2e-3);
     const lam = wavelength(f), r = od / 2;
     const sec = 0.5 * lam * vf;
     const whip = 0.25 * lam * 0.95;
@@ -30,7 +31,7 @@ export const collinear: AntennaDef = {
       wires.push({ a: v(0, 0, i * sec), b: v(0, 0, (i + 1) * sec - Math.min(1e-3, sec * 0.02)), r, group: i % 2 ? "parasitic" : "driven", tag: `S${i + 1}` });
       rows.push([`S${i + 1}`, i * sec, sec]);
     }
-    wires.push({ a: v(0, 0, n * sec), b: v(0, 0, n * sec + whip), r: Math.min(r, 1e-3), group: "line", tag: "W" });
+    wires.push({ a: v(0, 0, n * sec), b: v(0, 0, n * sec + whip), r: wd / 2, group: "line", tag: "W" });
     rows.push(["W", n * sec, whip]);
     return {
       wires,

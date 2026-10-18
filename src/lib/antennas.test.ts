@@ -282,6 +282,21 @@ describe("spring (normal-mode helix)", () => {
     expect(springTurns(0.00722, 0.267, 0.67).R).toBeGreaterThan(1);
     expect(springTurns(0.00722, 0.267, 0.67).R).toBeLessThan(3);
   });
+  it("spring radials use the spring's wire", () => {
+    const def = ANTENNA_BY_ID.spring;
+    const g = def.build({ ...def.defaults, d: 0.6e-3 }).wires.filter((w) => w.group === "ground");
+    expect(g).toHaveLength(4);
+    for (const w of g) expect(w.r).toBe(0.3e-3);
+  });
+});
+
+describe("collinear", () => {
+  it("collinear whip follows its own diameter", () => {
+    const def = ANTENNA_BY_ID.collinear;
+    const whip = (p: Params) => def.build({ ...def.defaults, ...p }).wires.find((w) => w.tag === "W")!;
+    expect(whip({ wd: 4e-3 }).r).toBe(2e-3);
+    expect(whip({}).r).toBe(1e-3);
+  });
 });
 
 describe("pagoda", () => {
