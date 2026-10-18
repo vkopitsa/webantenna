@@ -13,8 +13,8 @@ export const BEND_STRINGS = [
   "Bend plate",
   "Groove with the exact shape of {0} piece(s) of {1} wire, {2} long: press the wire into it and bend it round the pegs, so that every piece comes out the same.",
   "Corner jig",
-  "Bends {0} corner(s) of {1} wire to {2}° round the peg, so that every corner comes out the same.",
-  "Bends {0} pair(s) of corners of {1} wire to {2}° each, {3} apart, in one go round the two pegs.",
+  "Bends {0} corner(s) of {1} wire by {2}° round the peg, so that every corner comes out the same.",
+  "Bends {0} pair(s) of corners of {1} wire by {2}° each, {3} apart, in one go round the two pegs.",
   "Bends {0} group(s) of {1} corners of {2} wire in one go round the pegs, with the spacing between them built in.",
 ];
 
@@ -30,7 +30,7 @@ export const BEND_HOWTO: { plate: string[]; corner: string[]; mandrel: string[];
   corner: [
     "Print it flat, grooves up, with 100 % infill.",
     "Cut the wire to the length in the cut list and mark each corner on it.",
-    "Lay the wire through the groove with the corner mark at the peg and bend it round the peg with pliers.",
+    "Lay the wire through the groove with the corner mark at the peg and bend it round the peg with pliers, by the angle given above, until it lies in the groove.",
     "On a jig with two or more pegs, lay all the corners of the group in at once and bend them in one go.",
     "Repeat for every corner listed, with the same jig.",
   ],
@@ -125,7 +125,8 @@ export function cornerJigs(f: Flat): CornerJig[] {
   };
   const jig = (grp: number[]): CornerJig => {
     const a = grp[0], b = grp[grp.length - 1], ia = cs.indexOf(a), ib = cs.indexOf(b);
-    const prev = f.closed ? end(cs[(ia + k - 1) % k]) : 0, next = f.closed ? g.at[cs[(ib + 1) % k]] : N - 1;
+    // arms stop at the neighbouring corners' fillets (an open path's ends when there is none)
+    const prev = f.closed || ia > 0 ? end(cs[(ia + k - 1) % k]) : 0, next = f.closed || ib < k - 1 ? g.at[cs[(ib + 1) % k]] : N - 1;
     const back = walk(g.at[a], -1, prev), fwd = walk(end(b), 1, next), mid: P2[] = [];
     for (let i = g.at[a]; ; i = (i + 1) % N) { mid.push(g.path[i]); if (i === end(b)) break; }
     const raw = [...back.out.reverse(), ...mid, ...fwd.out], pegs = g.pegs.filter((p) => grp.includes(p.i));

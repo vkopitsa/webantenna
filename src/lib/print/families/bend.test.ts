@@ -198,6 +198,26 @@ describe("corner jigs", () => {
       if (b.ok) for (const g of b.segments) expect(Math.max(...g.size)).toBeLessThanOrEqual(MAX_SIZE);
     }
   });
+  it("open zig-zag: every jig's groove turns only by its own corners (arms stop at the neighbouring fillets)", () => {
+    // three 150° turns, 65 mm runs (≥ LINK, so single-corner jigs), d = 3
+    let h = 0, q: [number, number] = [0, 0];
+    const raw: [number, number][] = [q];
+    for (const t of [150, -150, 150, 0]) { q = [q[0] + 65 * Math.cos(h * Math.PI / 180), q[1] + 65 * Math.sin(h * Math.PI / 180)]; raw.push(q); h += t; }
+    const x0 = Math.min(...raw.map((a) => a[0])), y0 = Math.min(...raw.map((a) => a[1])), pts = raw.map((a) => [a[0] - x0, a[1] - y0] as [number, number]);
+    const f: Flat = { pts, closed: false, d: 3, corners: [1, 2, 3], size: [Math.max(...pts.map((a) => a[0])), Math.max(...pts.map((a) => a[1]))] };
+    const js = cornerJigs(f);
+    expect(js).toHaveLength(3);
+    for (const j of js) {
+      expect(j.corners).toBe(1);
+      expect(j.pegs).toHaveLength(1);
+      let tot = 0;
+      for (let i = 1; i < j.path.length - 1; i++) {
+        const [a, b, c] = [j.path[i - 1], j.path[i], j.path[i + 1]], u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]];
+        if (Math.hypot(...u) > 1e-6 && Math.hypot(...v) > 1e-6) tot += Math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]) * 180 / Math.PI;
+      }
+      expect(Math.abs(Math.abs(tot) - 150)).toBeLessThan(1);
+    }
+  });
   it("plate lead: the first untrimmed ball stays in front of the stop for d = 3 mm", () => {
     // a 1.2 mm lead kinked by 90°: the old 1 mm lead ended on the fillet, whose ball (r 1.65) reached behind the stop
     const f: Flat = { pts: [[0, 0], [1.2, 0], [1.2, 50], [60, 50]], closed: false, d: 3, corners: [1, 2], size: [60, 50] };
