@@ -74,10 +74,11 @@ const turn2 = (a: P2, b: P2, c: P2) => {
   return Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v) || 1)))) / DEG;
 };
 
-/** Project a path onto its best-fit plane (Newell normal; an open path's end points are projected); null when it leaves the plane by more than max(0.2, 0.1·d) mm or is a straight line. */
+/** Project a path onto its best-fit plane (Newell normal; an open path's end points are projected); null when it leaves the plane by more than max(0.2, 0.1·d) mm (an end: max(1, d, half its segment)) or is a straight line. */
 export function flatten(p: BendPath): Flat | null {
   const q = p.pts, n = q.length, dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  // an open path's end points are feed leads and may sit off the plane (by ≤ max(1, d), projected onto it): fit the interior when it can fix a plane
+  // an open path's end points are feed leads and may sit off the plane (by ≤ max(1, d, half the end segment), projected onto
+  // it): fit the interior when it can fix a plane
   const plane = (fit: V3[]) => {
     const m = fit.length, nrm = [0, 0, 0], c = [0, 0, 0];
     for (let i = 0; i < m; i++) {
@@ -100,8 +101,9 @@ export function flatten(p: BendPath): Flat | null {
   if (!pl) return null;
   const { N, c } = pl;
   const off = q.map((a) => dot([a[0] - c[0], a[1] - c[1], a[2] - c[2]], N));
-  const tol = Math.max(0.2, 0.1 * p.d), lead = inner ? Math.max(1, p.d) : tol;
-  if (off.some((o, i) => Math.abs(o) > (inner && (i === 0 || i === n - 1) ? lead : tol))) return null;
+  const tol = Math.max(0.2, 0.1 * p.d), seg = (i: number, j: number) => Math.hypot(q[j][0] - q[i][0], q[j][1] - q[i][1], q[j][2] - q[i][2]);
+  const lead = (i: number) => (inner ? Math.max(1, p.d, 0.5 * (i === 0 ? seg(0, 1) : seg(n - 2, n - 1))) : tol);
+  if (off.some((o, i) => Math.abs(o) > (inner && (i === 0 || i === n - 1) ? lead(i) : tol))) return null;
   const pr = q.map((a, i) => [a[0] - c[0] - N[0] * off[i], a[1] - c[1] - N[1] * off[i], a[2] - c[2] - N[2] * off[i]]);
   let best = 0, ax = [1, 0, 0];   // u along the longest segment
   for (let i = 0; i < (p.closed ? n : n - 1); i++) {

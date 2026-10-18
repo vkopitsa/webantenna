@@ -100,6 +100,14 @@ describe("flatten / filleted / signature", () => {
     const five: BendPath = { pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [20, 10, 5]], closed: false, d: 1.5, group: "" };
     expect(flatten(five)).toBeNull();   // free end 5 mm off the plane of the interior
   });
+  it("open paths: an end may sit off the plane by up to half its segment (a feed lead), not more", () => {
+    const tail = (h: number): BendPath => ({ pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [30, 10, h]], closed: false, d: 1.5, group: "" });
+    expect(flatten(tail(4))).not.toBeNull();   // 4 mm off on a 10.8 mm segment
+    expect(flatten(tail(8))).toBeNull();       // 8 mm off on a 12.8 mm segment
+  });
+  it.each(["1240e6-1300e6", "863e6-873e6"])("cloverleaf at %s: the leaves flatten (their feed ends sit off the plane)", (bands) => {
+    for (const p of bendPaths(setup("cloverleaf", { bands }).d)) expect(flatten(p)).not.toBeNull();
+  });
   it("signature includes d and the closed flag", () => {
     const f = flatten(bendPaths(setup("quad").d)[0])!;
     expect(signature({ ...f, d: f.d + 0.5 })).not.toBe(signature(f));

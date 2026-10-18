@@ -2,7 +2,7 @@ import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Design, Vec3 } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { bendPaths, filleted, flatten, signature, type BendPath, type Flat, type Groove, type P2 } from "../paths";
-import { CLEAR, MAX_SIZE, WALL, mm } from "../rules";
+import { CLEAR, MAX_SIZE, SEG_H, WALL, mm } from "../rules";
 import { box, dShape, rod, stack, twistGroove, type V3 } from "../shapes";
 import { sides } from "./former";
 
@@ -28,14 +28,14 @@ export const BEND_HOWTO: { plate: string[]; corner: string[]; mandrel: string[];
   plate: [
     "Print it flat, grooves up, with 100 % infill.",
     "Push the wire end against the stop at the start of the groove; for a closed loop, start at the notch across the groove.",
-    "Press the wire into the groove as you go and bend it round each peg with pliers.",
+    "Press the wire into the groove as you go and bend it at each corner with pliers (round the peg where there is one).",
     "Trim it at the end of the groove; a closed loop overlaps at the notch: solder the ends there.",
     "Use the same plate for every piece.",
   ],
   corner: [
     "Print it flat, grooves up, with 100 % infill.",
-    "Cut the wire to the length in the cut list and mark each corner on it.",
-    "Lay the wire through the groove with the corner mark at the peg and bend it round the peg with pliers, by the angle given above, until it lies in the groove.",
+    "Cut the wire to the length in the cut list and mark each corner on it, measuring the side lengths from the build sheet.",
+    "Lay the wire through the groove with the corner mark at the peg and bend it round the peg with pliers until it lies in the groove.",
     "On a jig with two or more pegs, lay all the corners of the group in at once and bend them in one go.",
     "Repeat for every corner listed, with the same jig.",
   ],
@@ -61,13 +61,29 @@ const MARGIN = 4;     // plastic round the groove, as skycone-bend
 const LEAD = 1;       // mm: an open groove's stop faces along the path from its start to the first point this far away
 const ARM = 40;       // mm of straight groove each side of a corner jig's fillets
 const LINK = 60;      // mm: corners joined by a shorter run share one corner jig
+const MERGE = 2;      // degrees: single-corner jigs this close share one jig at their mean angle
 
-/** The filleted groove in plate coordinates (the flat piece shifted by the margin); start = groove point at the piece's
- *  first point; lead = first groove point more than LEAD (and its ball radius + 0.5) from the start (the stop faces along start → lead). */
-export function plateGroove(f: Flat): Groove & { start: number; lead: number } {
+/** The filleted groove in plate coordinates (the flat piece shifted by the margin); lead = first groove point more than LEAD
+ *  (and its ball radius + 0.5) from the start (an open groove's stop faces along start → lead); notch (closed: point and unit
+ *  direction) = middle of the first straight run after the piece's first point (the feed), clear of the corner pegs. */
+export function plateGroove(f: Flat): Groove & { lead: number; notch?: [P2, P2] } {
   const g = filleted(f), sh = ([x, y]: P2): P2 => [x + MARGIN, y + MARGIN], s = sh(f.pts[0]), far = Math.max(LEAD, (f.d + CLEAR) / 2 + 0.5);
-  const path = g.path.map(sh), dist = (q: P2) => Math.hypot(q[0] - s[0], q[1] - s[1]), lead = path.findIndex((q) => dist(q) > far);
-  return { path, pegs: g.pegs.map((p) => ({ ...p, c: sh(p.c) })), at: g.at, start: path.reduce((m, q, i) => (dist(q) < dist(path[m]) ? i : m), 0), lead: Math.max(1, lead) };
+  const path = g.path.map(sh), N = path.length, dist = (a: P2, b: P2) => Math.hypot(b[0] - a[0], b[1] - a[1]), lead = path.findIndex((q) => dist(q, s) > far);
+  let notch: [P2, P2] | undefined;
+  if (f.closed) {
+    // the run from vertex 0's last groove point to the next corner's first (round to vertex 0's own fillet when it is the only corner)
+    const cs = f.corners, a = (g.at[1] ?? N) - 1, c = cs.find((i) => i > 0) ?? cs[0], e = c == null ? a : g.at[c];
+    const idx: number[] = [a];
+    for (let i = (a + 1) % N; ; i = (i + 1) % N) { idx.push(i); if (i === e) break; }
+    const ls = idx.slice(1).map((i, m) => dist(path[idx[m]], path[i])), half = ls.reduce((x, y) => x + y, 0) / 2;
+    for (let m = 0, acc = 0; m < ls.length; acc += ls[m++]) {
+      if (acc + ls[m] < half && m < ls.length - 1) continue;
+      const p = path[idx[m]], q = path[idx[m + 1]], t = (half - acc) / ls[m];
+      notch = [[p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t], [(q[0] - p[0]) / ls[m], (q[1] - p[1]) / ls[m]]];
+      break;
+    }
+  }
+  return { path, pegs: g.pegs.map((p) => ({ ...p, c: sh(p.c) })), at: g.at, lead: Math.max(1, lead), notch };
 }
 
 const at0 = (q: P2): V3 => [q[0], q[1], 0];
@@ -89,9 +105,9 @@ const slab = (M: ManifoldToplevel, W: number, H: number, d: number, pegs: Groove
     ...pegs.map((p) => M.Manifold.cylinder(T + d + 1, p.r, p.r, 32).translate([p.c[0], p.c[1], -T]))]);
 };
 
-/** Plate z ∈ [−T, 0] with the wire centre on the top face: groove (open: flat stop at the start), pegs up to d + 1, closed: start notch. */
+/** Plate z ∈ [−T, 0] with the wire centre on the top face: groove (open: flat stop at the start), pegs up to d + 1, closed: start notch on the first straight run. */
 function plate(M: ManifoldToplevel, f: Flat): Manifold {
-  const { path, pegs, start, lead } = plateGroove(f), d = f.d, n = path.length, at = at0;
+  const { path, pegs, lead, notch } = plateGroove(f), d = f.d, n = path.length;
   const W = f.size[0] + 2 * MARGIN, H = f.size[1] + 2 * MARGIN, { seg, ballAt, live } = cutters(M, path, d);
   const cuts: Manifold[] = [];
   if (f.closed) for (let i = 0; i < n; i++) { if (live(i)) cuts.push(seg(i)); cuts.push(ballAt(i)); }
@@ -105,17 +121,17 @@ function plate(M: ManifoldToplevel, f: Flat): Manifold {
     cuts.push(M.Manifold.union(head).trimByPlane(u, u[0] * a[0] + u[1] * a[1]));
     for (let i = lead; i < n; i++) { if (i < n - 1 && live(i)) cuts.push(seg(i)); cuts.push(ballAt(i)); }
   }
-  if (f.closed) {   // 1 mm wide, d/2 deep notch across the groove at the start
-    const q = path[start], r = path[(start + 1) % n], ang = Math.atan2(r[1] - q[1], r[0] - q[0]) * 180 / Math.PI;
-    cuts.push(M.Manifold.cube([1, d + CLEAR + 4, d], true).rotate([0, 0, ang]).translate(at(q)));
+  if (notch) {   // 1 mm wide, d/2 deep notch across the groove at the start
+    const [q, u] = notch;
+    cuts.push(M.Manifold.cube([1, d + CLEAR + 4, d], true).rotate([0, 0, Math.atan2(u[1], u[0]) * 180 / Math.PI]).translate(at0(q)));
   }
   return slab(M, W, H, d, pegs).subtract(M.Manifold.union(cuts));
 }
 
 /** A corner jig: a group of corners cut from the whole piece's filleted groove, in its own plate coordinates (margin
  *  included); corners = how many, angles (°, signed: the first one positive) and runs (mm, corner to corner) for the key;
- *  arms = straight groove kept beyond the fillets (mm); mids = fillet midpoints. */
-export interface CornerJig { key: string; corners: number; angles: number[]; runs: number[]; path: P2[]; pegs: Groove["pegs"]; mids: P2[]; size: P2; arms: number }
+ *  arms = straight groove kept beyond the fillets (mm), reach = the same before and after; mids = fillet midpoints. */
+export interface CornerJig { key: string; corners: number; angles: number[]; runs: number[]; path: P2[]; pegs: Groove["pegs"]; mids: P2[]; size: P2; arms: number; reach: P2 }
 
 /** Corner jigs of a flat piece: corners joined by a run < LINK grouped (as long as the jig fits the bed), each group's
  *  groove from ARM before its first fillet to ARM after its last, clamped to the path's ends and the neighbouring fillets. */
@@ -155,7 +171,7 @@ export function cornerJigs(f: Flat): CornerJig[] {
     const seq = (as: number[], rs: number[]) => as.map((x, m) => `${Math.round(x * 2)}${m < rs.length ? `:${Math.round(rs[m] * 10)}` : ""}`).join(",");
     const ra = [...angles].reverse(), rev = seq(ra.map((x) => Math.sign(ra[0]) * x), [...runs].reverse()), fw = seq(angles, runs);
     return { key: `${Math.round(f.d * 100)}|${rev < fw ? rev : fw}`, corners: grp.length, angles, runs, path: raw.map(sh), pegs: pegs.map((p) => ({ ...p, c: sh(p.c) })),
-      mids, size: [hi[0] - lo[0], hi[1] - lo[1]], arms: back.s + fwd.s };
+      mids, size: [hi[0] - lo[0], hi[1] - lo[1]], arms: back.s + fwd.s, reach: [back.s, fwd.s] };
   };
   // a closed piece starts after its longest run, so a group never straddles the start
   let o = 0;
@@ -183,6 +199,40 @@ function cornerPlate(M: ManifoldToplevel, j: CornerJig, d: number): Manifold {
     cuts.push(rod(M, at0(q), [q[0] + u[0] * (t + 1), q[1] + u[1] * (t + 1), 0], d + CLEAR));
   }
   return slab(M, W, H, d, pegs).subtract(M.Manifold.union(cuts));
+}
+
+/** One corner of `deg` (turn, °) with straight arms of `arm` mm each side, as a corner jig. */
+function single(deg: number, arm: number, d: number): CornerJig {
+  const th = deg * Math.PI / 180, t = (Math.max(1.5, d) + (d + CLEAR) / 2) * Math.tan(th / 2), l = Math.max(t + arm, t / 0.45 + 0.01);
+  const pts: P2[] = [[0, 0], [l, 0], [l + l * Math.cos(th), l * Math.sin(th)]], x0 = Math.min(...pts.map((q) => q[0])), y0 = Math.min(...pts.map((q) => q[1]));
+  const sp = pts.map(([x, y]): P2 => [x - x0, y - y0]);
+  return cornerJigs({ pts: sp, closed: false, d, corners: [1], size: [Math.max(...sp.map((q) => q[0])), Math.max(...sp.map((q) => q[1]))] })[0];
+}
+
+/** Single-corner jigs of the same wire whose angles chain within MERGE° (each also within MERGE° of the count-weighted
+ *  mean) become one jig at that mean, with the shortest arm of the group on both sides; linked groups are kept as they are. */
+type JigUse = { j: CornerJig; d: number; n: number };
+function merged(js: JigUse[]): JigUse[] {
+  const deg = (e: JigUse) => Math.abs(e.j.angles[0]), ones = js.filter((e) => e.j.corners === 1).sort((a, b) => a.d - b.d || deg(a) - deg(b));
+  const groups: JigUse[][] = [];
+  let g: JigUse[] = [];
+  for (const e of ones) {
+    const h = [...g, e], n = h.reduce((s, x) => s + x.n, 0), mean = h.reduce((s, x) => s + x.n * deg(x), 0) / n;
+    if (g.length && Math.abs(e.d - g[0].d) < 1e-9 && deg(e) - deg(g[g.length - 1]) <= MERGE + 1e-9 && h.every((x) => Math.abs(deg(x) - mean) <= MERGE + 1e-9)) g = h;
+    else { if (g.length) groups.push(g); g = [e]; }
+  }
+  if (g.length) groups.push(g);
+  // in the order of each group's first jig
+  const out: JigUse[] = [];
+  for (const e of js) {
+    if (e.j.corners > 1) { out.push(e); continue; }
+    const k = groups.findIndex((x) => x.includes(e));
+    if (k < 0) continue;
+    const grp = groups[k], n = grp.reduce((s, x) => s + x.n, 0), mean = grp.reduce((s, x) => s + x.n * deg(x), 0) / n;
+    out.push(grp.length === 1 ? e : { j: single(mean, Math.min(...grp.flatMap((x) => x.j.reach)), e.d), d: e.d, n });
+    groups.splice(k, 1);
+  }
+  return out;
 }
 
 /** Design length of a piece in metres. */
@@ -220,7 +270,7 @@ export function bendParts(d: Design): PartSpec[] {
     });
   }
   let c = 0;
-  for (const { j, d, n } of jigs.values()) {
+  for (const { j, d, n } of merged([...jigs.values()])) {
     const deg = Math.round(Math.abs(j.angles[0]) * 2) / 2, len = { len: d / 1000 };
     const pair = j.corners === 2 && Math.round(Math.abs(j.angles[1]) * 2) / 2 === deg;
     out.push({
@@ -239,12 +289,14 @@ export const MANDREL_HANDLE = 20;   // mm of plain core below the coil, to hold
 const CAP = 2;                      // mm: top cap above the groove (grooved), lower stop ring (plain)
 const TIP = 3;                      // mm of plain core above the length notch, chamfered at the top
 const RIDGE = 0.8;                  // mm of plastic between neighbouring turns for a groove
-const CORE_MIN = 3;                 // mm: a thinner core is a drill bit's job
+const CORE_MIN = 5;                 // mm: a thinner core is a drill bit's job
+const SLENDER = 12;                 // a stacked piece is at most this many core diameters tall
 const KEY_H = 8;                    // spigot height between stacked pieces
 
 /** Spring coil in mm from the model: the driven wires after the straight lead; axis = circumcentre of the first three coil
  *  points (c, xy), turns by unwrapped atan2 round it (as helixGeometry); a0/a1 = start/end angles (rad); H = coil length,
- *  z0 = coil start; zs = coil start on the mandrel; L = mandrel length (handle, lower ring, coil, cap or shoulder). */
+ *  z0 = coil start; zs = coil start on the mandrel; L = mandrel length (handle, lower ring, coil, cap or shoulder);
+ *  core = inside diameter of the coil (2R − d − CLEAR); seg = tallest stacked piece (SEG_H, at most SLENDER cores). */
 export function springGeometry(d: Design) {
   const coil = d.wires.filter((w) => w.group === "driven" && !w.drawOnly && !w.necOnly && Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) > 1e-9);
   const pts = [coil[0].a, ...coil.map((w) => w.b)].map((p: Vec3): V3 => [mm(p[0]), mm(p[1]), mm(p[2])]);
@@ -256,10 +308,11 @@ export function springGeometry(d: Design) {
   for (let i = 1; i < pts.length; i++) { const da = ang(pts[i]) - ang(pts[i - 1]); turn += da - 2 * Math.PI * Math.round(da / (2 * Math.PI)); }
   const R = pts.reduce((s, p) => s + Math.hypot(p[0] - c[0], p[1] - c[1]), 0) / pts.length, wireD = mm(2 * coil[0].r);
   const n = Math.abs(turn) / (2 * Math.PI), hand = (turn > 0 ? 1 : -1) as 1 | -1, z0 = pts[0][2], H = pts[pts.length - 1][2] - z0, S = H / n;
-  const grooved = S - wireD - CLEAR >= RIDGE;
+  const grooved = S - wireD - CLEAR >= RIDGE, core = 2 * R - wireD - CLEAR;
   // zs = coil start on the mandrel: the groove starts at the handle top; a plain coil's first turn sits on the lower ring
   const zs = grooved ? MANDREL_HANDLE : MANDREL_HANDLE + CAP + wireD / 2;
-  return { R, wireD, S, n, hand, H, c, z0, zs, a0: ang(pts[0]), a1: ang(pts[pts.length - 1]), grooved, L: zs + H + (grooved ? wireD + CLEAR + CAP : (wireD + CLEAR) / 2 + TIP) };
+  return { R, wireD, S, n, hand, H, c, z0, zs, a0: ang(pts[0]), a1: ang(pts[pts.length - 1]), grooved, core, seg: Math.min(SEG_H, SLENDER * core),
+    L: zs + H + (grooved ? wireD + CLEAR + CAP : (wireD + CLEAR) / 2 + TIP) };
 }
 export type SpringGeometry = ReturnType<typeof springGeometry>;
 
@@ -288,12 +341,12 @@ function mandrel(M: ManifoldToplevel, g: SpringGeometry): Manifold[] {
   return stack(part, g.L, (zc) => ({
     below: M.Manifold.extrude(dShape(M, rk, f), KEY_H + 2).translate([0, 0, zc - 2]),
     aboveCut: M.Manifold.extrude(dShape(M, rk + CLEAR / 2, f + CLEAR / 2), KEY_H + 1.5).translate([0, 0, zc - 1]),
-  }));
+  }), g.seg);
 }
 
-/** Coil mandrel for the spring: [] when the wire is over 3 mm or the core (2R − d − CLEAR) under 3 mm. */
+/** Coil mandrel for the spring: [] when the wire is over 3 mm or the core (2R − d − CLEAR) under 5 mm. */
 export function coilParts(d: Design): PartSpec[] {
-  const g = springGeometry(d), core = 2 * g.R - g.wireD - CLEAR;
+  const g = springGeometry(d), core = g.core;
   if (g.wireD > D_MAX + 1e-9 || core < CORE_MIN) return [];
   const wire = { len: g.wireD / 1000 }, n = Math.round(g.n * 10) / 10;
   return [{

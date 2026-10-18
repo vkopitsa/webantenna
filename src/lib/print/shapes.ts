@@ -75,16 +75,16 @@ export function twistGroove(M: M, R: number, d: number, z0: number, z1: number, 
 export const dShape = (M: M, r: number, flat: number): CrossSection =>
   M.CrossSection.circle(r, 64).intersect(M.CrossSection.square([flat + r + 1, 2 * r + 2]).translate([-r - 1, -r - 1]));
 
-/** Bottoms of the stacked pieces of a body of height H: equal pieces no taller than SEG_H. */
-export const pieceBottoms = (H: number): number[] => { const k = Math.ceil(H / SEG_H); return Array.from({ length: k }, (_, i) => (i * H) / k); };
+/** Bottoms of the stacked pieces of a body of height H: equal pieces no taller than max (SEG_H). */
+export const pieceBottoms = (H: number, max = SEG_H): number[] => { const k = Math.ceil(H / max); return Array.from({ length: k }, (_, i) => (i * H) / k); };
 
 export type Joint = { below?: Manifold; aboveAdd?: Manifold; aboveCut?: Manifold };
 
-/** Cut a body standing on z = 0 into the pieces of `pieceBottoms(H)`, each moved down so its cut is at z = 0 (a joint that adds
+/** Cut a body standing on z = 0 into the pieces of `pieceBottoms(H, max)`, each moved down so its cut is at z = 0 (a joint that adds
  *  a skirt below the cut puts the piece's lowest point below z = 0). At each cut zc,
  *  `joint(zc)` gives the spigot the piece below gains and what the piece above gains or loses (all in body coordinates). */
-export function stack(body: Manifold, H: number, joint: (zc: number) => Joint): Manifold[] {
-  const zs = pieceBottoms(H);
+export function stack(body: Manifold, H: number, joint: (zc: number) => Joint, max = SEG_H): Manifold[] {
+  const zs = pieceBottoms(H, max);
   if (zs.length === 1) return [body];
   return zs.map((z0, i) => {
     const z1 = i + 1 < zs.length ? zs[i + 1] : Infinity;

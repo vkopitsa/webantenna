@@ -8,7 +8,7 @@ import { CLEAR, MAX_SIZE } from "../rules";
 import { ANTENNA_BY_ID } from "../../antennas";
 import { buildPack, en } from "../../build";
 import { pieceBottoms } from "../shapes";
-import { BEND_HOWTO, bendParts, coilParts, cornerJigs, MANDREL_HANDLE, plateGroove, springGeometry } from "./bend";
+import { BEND_HOWTO, BEND_STRINGS, bendParts, coilParts, cornerJigs, MANDREL_HANDLE, plateGroove, springGeometry } from "./bend";
 import { ball, inside, setup } from "./testkit";
 
 let M: ManifoldToplevel;
@@ -84,6 +84,11 @@ describe("bend plate", () => {
     });
     expect(open).toBeGreaterThan(0);
   }, 60_000);
+  it.each(["1240e6-1300e6", "863e6-873e6"])("cloverleaf at %s: a bend part that builds", (bands) => {
+    const ps = bendParts(setup("cloverleaf", { bands }).d);
+    expect(ps.length).toBeGreaterThan(0);
+    for (const s of ps) expect(buildPart(M, s, "t").ok, s.id).toBe(true);
+  }, 60_000);
   it("biquad: pegs inside the corners, up to d + 1 above the top face", () => {
     const [f] = flats("biquad"), plate = plates("biquad")[0].build(M)[0], { pegs } = plateGroove(f);
     expect(pegs.length).toBeGreaterThan(0);
@@ -122,16 +127,32 @@ describe("bend plate", () => {
     expect(plates("biquad", { d: 0.003 })).toHaveLength(1);
     expect(bendParts(setup("biquad", { d: 0.0031 }).d)).toHaveLength(0);
   });
-  it("closed loop: a start notch across the groove at the feed point", () => {
-    const [f] = flats("biquad"), plate = plates("biquad")[0].build(M)[0], { path: g, start } = plateGroove(f);
-    const q = g[start], q1 = g[(start + 1) % g.length], l = Math.hypot(q1[0] - q[0], q1[1] - q[1]), nx = -(q1[1] - q[1]) / l, ny = (q1[0] - q[0]) / l;
+  it("closed loop: a start notch across the groove halfway along the first straight run after the feed point", () => {
+    const [f] = flats("biquad"), plate = plates("biquad")[0].build(M)[0], { notch } = plateGroove(f);
+    const [q, u] = notch!, nx = -u[1], ny = u[0], sh = (P: [number, number]) => [P[0] + 4, P[1] + 4];
+    // the first run is pts[0] → pts[1] (both corners on the biquad): the notch sits at its middle, along it
+    const a = sh(f.pts[0]), b = sh(f.pts[1]);
+    expect(Math.hypot(q[0] - (a[0] + b[0]) / 2, q[1] - (a[1] + b[1]) / 2)).toBeLessThan(0.05);
+    expect(Math.abs(u[0] * (b[1] - a[1]) - u[1] * (b[0] - a[0]))).toBeLessThan(1e-6);
     const cube = (s: number, x: number, y: number, z: number) => M.Manifold.cube([s, s, s], true).translate([x, y, z]);
-    // beside the groove (outside its width), just under the top face: cut away at the notch, plastic elsewhere
+    // beside the groove (outside its width), just under the top face: cut away at the notch, plastic 3 mm further on
     const w = (f.d + 0.3) / 2 + 0.6;
-    expect(inside(plate, cube(0.2, q[0] + nx * w, q[1] + ny * w, -0.15))).toBeLessThan(1e-4);
-    const m = g[(start + 3) % g.length], m1 = g[(start + 4) % g.length], lm = Math.hypot(m1[0] - m[0], m1[1] - m[1]);
-    expect(inside(plate, cube(0.2, m[0] - (m1[1] - m[1]) / lm * w, m[1] + (m1[0] - m[0]) / lm * w, -0.15))).toBeGreaterThan(0.9 * 0.008);
+    for (const k of [1, -1]) {
+      expect(inside(plate, cube(0.2, q[0] + k * nx * w, q[1] + k * ny * w, -0.15))).toBeLessThan(1e-4);
+      expect(inside(plate, cube(0.2, q[0] + u[0] * 3 + k * nx * w, q[1] + u[1] * 3 + k * ny * w, -0.15))).toBeGreaterThan(0.9 * 0.008);
+    }
   });
+  it.each([["defaults", {}], ["d 0.5", { d: 0.0005 }], ["d 3", { d: 0.003 }], ["5.8 GHz", { bands: "5725e6-5875e6" }]] as [string, Params][])(
+    "biquad %s: every peg is whole (the start notch does not slit the feed-corner peg)", (_t, extra) => {
+      const [f] = flats("biquad", extra), ps = plates("biquad", extra), { pegs } = plateGroove(f);
+      expect(ps).toHaveLength(1);
+      expect(pegs.length).toBeGreaterThan(0);
+      const plate = ps[0].build(M)[0];
+      for (const p of pegs) {
+        const b = ball(M, [p.c[0], p.c[1], 0], 1.8 * p.r);
+        expect(inside(plate, b), `peg ${p.i}`).toBeGreaterThan(0.99 * b.volume());
+      }
+    });
 });
 
 const corners = (id: string, extra: Params = {}) => bendParts(setup(id, extra).d).filter((s) => s.id.startsWith("bend-corner"));
@@ -190,6 +211,17 @@ describe("corner jigs", () => {
     clearAndHeld(jig, [pn[0] + (pm[0] - pn[0]) / lm * 10, pn[1] + (pm[1] - pn[1]) / lm * 10], f.d, "arm 2");
     expect(Math.abs(Math.abs((pn[0] - p0[0]) * u[1] - (pn[1] - p0[1]) * u[0]) - fs * 1000)).toBeLessThan(0.05);
   });
+  it("biquad at 433 MHz: corners within 2° share one jig at their mean angle", () => {
+    const extra = { bands: "433.05e6-434.79e6" }, cs = corners("biquad", extra);
+    expect(cs.map((s) => s.id)).toEqual(["bend-corner-1"]);
+    expect(cs[0].purpose.s).toBe(BEND_STRINGS[3]);
+    expect(cs[0].purpose.a![0]).toBe(8);
+    const js = cornerJigs(flats("biquad", extra)[0]), mean = js.reduce((x, j) => x + Math.abs(j.angles[0]), 0) / js.length;
+    expect(cs[0].purpose.a![2]).toBe(Math.round(mean * 2) / 2);
+    const b = buildPart(M, cs[0], "t");
+    expect(b.ok).toBe(true);
+    if (b.ok) for (const s of b.segments) expect(Math.max(...s.size)).toBeLessThanOrEqual(MAX_SIZE);
+  });
   it("moxon defaults: corner jigs only, all build within 180 mm", () => {
     const all = bendParts(setup("moxon").d);
     expect(all.length).toBeGreaterThan(0);
@@ -233,7 +265,7 @@ describe("coil mandrel", () => {
   /** Design point → mandrel coordinates (axis on z, handle from z = 0). */
   const local = (g: ReturnType<typeof springGeometry>, q: [number, number, number]): [number, number, number] =>
     [q[0] * 1000 - g.c[0], q[1] * 1000 - g.c[1], q[2] * 1000 - g.z0 + g.zs];
-  const restack = (segs: Manifold[], H: number) => { const zs = pieceBottoms(H); return M.Manifold.union(segs.map((s, i) => s.translate([0, 0, segs.length > 1 ? zs[i] : 0]))); };
+  const restack = (segs: Manifold[], g: ReturnType<typeof springGeometry>) => { const zs = pieceBottoms(g.L, g.seg); return M.Manifold.union(segs.map((s, i) => s.translate([0, 0, segs.length > 1 ? zs[i] : 0]))); };
   const area = (m: Manifold, z: number) => m.slice(z).area();
 
   it("reads the design: diameter, pitch, turns, hand, coil length", () => {
@@ -246,8 +278,8 @@ describe("coil mandrel", () => {
     expect(g.hand).toBe(1);
     expect(g.n * g.S).toBeCloseTo(g.H, 6);
   });
-  it("spring defaults: plain mandrel (close-wound): lower ring, length notch H above the first turn, slides off the top", () => {
-    const { d } = setup("spring");
+  it("close-wound spring (D 6.5 mm): plain mandrel: lower ring, length notch H above the first turn, slides off the top", () => {
+    const { d } = setup("spring", { D: 0.0065 });
     const ps = coilParts(d), g = springGeometry(d);
     expect(ps.map((s) => s.id)).toEqual(["coil-mandrel"]);
     expect(ps[0].use).toBe("former");
@@ -284,7 +316,7 @@ describe("coil mandrel", () => {
     const { d } = setup("spring", { D: 0.02, pitch: 0.005, d: 0.0015 });
     const [s] = coilParts(d), g = springGeometry(d);
     expect(s.howTo.map((m) => m.s)).toEqual(BEND_HOWTO.mandrel);
-    const whole = restack(s.build(M), g.L);
+    const whole = restack(s.build(M), g);
     const pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b));
     for (const q of pts) {
       expect(inside(whole, ball(M, q, g.wireD)), `clear ${q}`).toBeLessThan(1e-3);
@@ -292,7 +324,29 @@ describe("coil mandrel", () => {
     }
     expect(buildPart(M, s, "t").ok).toBe(true);
   }, 60_000);
-  it("no mandrel for wire over 3 mm or a core under 3 mm; the build steps then name a drill bit", () => {
+  it("spring defaults (core 3.4 mm): no mandrel, the build steps name a drill bit", () => {
+    const def = ANTENNA_BY_ID.spring, { d } = setup("spring"), W = "Wind the coil on a drill bit or bolt of {0}.";
+    expect(coilParts(d)).toEqual([]);
+    const w = buildPack(def, def.defaults).steps.find((m) => m.s === W)!;
+    expect((w.a![0] as { len: number }).len).toBeCloseTo(0.0045 - 0.0008 - 0.0003, 9);
+    // D is found by the dimension's key, not its label
+    const relabelled = { ...d, dims: d.dims.map((x) => ({ ...x, label: "?" })) }, w2 = buildPack(def, def.defaults, relabelled).steps.find((m) => m.s === W)!;
+    expect((w2.a![0] as { len: number }).len).toBeCloseTo(0.0045 - 0.0008 - 0.0003, 9);
+  });
+  it("a thin core is cut into pieces no taller than 12 × its diameter", () => {
+    const { d } = setup("spring", { D: 0.0065, bands: "144e6-146e6" }), g = springGeometry(d), core = 2 * g.R - g.wireD - CLEAR;
+    expect(g.seg).toBeCloseTo(12 * core, 9);
+    expect(g.L).toBeGreaterThan(g.seg);
+    const [s] = coilParts(d), r = buildPart(M, s, "t");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.segments).toHaveLength(Math.ceil(g.L / g.seg));
+      r.segments.forEach((x) => expect(x.size[2]).toBeLessThanOrEqual(g.seg + 8 + 1e-6));
+    }
+    const whole = restack(s.build(M), g), pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b));
+    for (const q of pts) expect(inside(whole, ball(M, q, g.wireD)), `${q}`).toBeLessThan(1e-3);
+  }, 60_000);
+  it("no mandrel for wire over 3 mm or a core under 5 mm; the build steps then name a drill bit", () => {
     // d = 4 mm needs a pitch above 4.4 mm (spring.build clamps d to 0.9·pitch) and D ≥ 2d
     expect(coilParts(setup("spring", { d: 0.004, pitch: 0.006, D: 0.012 }).d)).toEqual([]);
     const { d } = setup("spring", { D: 0.003 });
@@ -302,10 +356,12 @@ describe("coil mandrel", () => {
     const W = "Wind the coil on a drill bit or bolt of {0}.", w = st.find((m) => m.s === W)!;
     expect((w.a![0] as { len: number }).len).toBeCloseTo(0.003 - 0.0008 - 0.0003, 9);
     expect(en(w)).toBe("Wind the coil on a drill bit or bolt of 1.90 mm.");
-    expect(buildPack(def, def.defaults).steps.some((m) => m.s === W)).toBe(false);
+    const big = { ...def.defaults, D: 0.0065 };
+    expect(coilParts(def.build(big))).toHaveLength(1);
+    expect(buildPack(def, big).steps.some((m) => m.s === W)).toBe(false);
     // wire over 3 mm: no mandrel either, so the step is there too
     const q = { ...def.defaults, d: 0.004, pitch: 0.006, D: 0.012 }, t = buildPack(def, q, def.build(q)).steps.find((m) => m.s === W)!;
-    expect((t.a![0] as { len: number }).len).toBeCloseTo(0.012 - 0.004 - 0.0003, 9);
+    expect((t.a![0] as { len: number }).len).toBeCloseTo(0.012 - 0.004, 9);   // a drill bit needs no print clearance
   });
   it("a spring at the turn cap is stacked: several pieces, each within the bed", () => {
     const { d } = setup("spring", { bands: "27e6-27.5e6", D: 0.02, pitch: 0.005, d: 0.0015 });
@@ -318,7 +374,7 @@ describe("coil mandrel", () => {
       r.segments.forEach((x) => expect(Math.max(...x.size)).toBeLessThanOrEqual(MAX_SIZE));
     }
     // the groove runs on across the cuts: design points near them are clear once the pieces are put back together
-    const whole = restack(s.build(M), g.L), cuts = pieceBottoms(g.L).slice(1);
+    const whole = restack(s.build(M), g), cuts = pieceBottoms(g.L, g.seg).slice(1);
     const near = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b)).filter((q) => cuts.some((z) => Math.abs(q[2] - z) < 6));
     expect(near.length).toBeGreaterThan(8);
     for (const q of near) expect(inside(whole, ball(M, q, g.wireD)), `${q}`).toBeLessThan(1e-3);

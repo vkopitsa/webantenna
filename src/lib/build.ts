@@ -474,10 +474,12 @@ export function buildPack(def: AntennaDef, p: Params, d = def.build(p)): BuildPa
   const t = tuning(def, p, d);
   const cuts = d.pcb ? [] : cutList(def, d, new Set(t.rows.map((r) => r.tag)));
   const hasBoom = !d.pcb && pieces(d).some((pc) => pc.mech && pc.length > 0.05);
-  // spring: inside diameter of the coil (wire-centre D − d − 0.3 mm clearance); no printed mandrel below 3 mm or for wire over 3 mm
-  const D = def.id === "spring" ? d.dims.find((x) => x.label === "Coil diameter (wire centre)")?.value : undefined;
+  // spring: inside diameter of the coil (wire-centre D − d − 0.3 mm clearance); no printed mandrel below 5 mm or for wire
+  // over 3 mm (then a drill bit of D − d, no print clearance)
+  const D = def.id === "spring" ? d.dims.find((x) => x.key === "D")?.value : undefined;
   const wd = 2 * (d.wires.find((w) => w.group === "driven")?.r ?? 0), core = D != null ? D - wd - 0.0003 : Infinity;
-  return { bom: bom(def, d, cuts), cuts, tune: t.rows, tuneNote: t.note, substrate: substrateNotes(def, p, d), steps: steps(d, hasBoom, t.rows.length > 0, { loop: def.id === "pcbloop", cutLong: cuts.some((c) => c.cut > c.length + 1e-6), match: !!feedMatch(def, d), wind: core < 0.003 || (D != null && wd > 0.003) ? core : undefined }), hasBoom };
+  const wind = D == null ? undefined : wd > 0.003 ? D - wd : core < 0.005 ? core : undefined;
+  return { bom: bom(def, d, cuts), cuts, tune: t.rows, tuneNote: t.note, substrate: substrateNotes(def, p, d), steps: steps(d, hasBoom, t.rows.length > 0, { loop: def.id === "pcbloop", cutLong: cuts.some((c) => c.cut > c.length + 1e-6), match: !!feedMatch(def, d), wind }), hasBoom };
 }
 
 // ---------------------------------------------------------------- measured vs model

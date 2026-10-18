@@ -128,7 +128,7 @@ export const spring: AntennaDef = {
       dims: [
         { label: "Wavelength λ", value: lam },
         { key: "H", label: "Coil length (axial)", value: H, at: [v(0, 0, lead), v(0, 0, lead + H)] },
-        { label: "Coil diameter (wire centre)", value: D, at: [v(0, 0, lead + S / 2), v(-2 * R, 0, lead + S / 2)] },
+        { key: "D", label: "Coil diameter (wire centre)", value: D, at: [v(0, 0, lead + S / 2), v(-2 * R, 0, lead + S / 2)] },
         { label: "Turn spacing (pitch)", value: S, at: [v(0, 0, lead), v(0, 0, lead + S)] },
         { label: "Straight lead", value: lead, at: lead > 1e-6 ? [wires[0].a, wires[0].b] : undefined },
         { label: "Wire in the coil", value: wire },
