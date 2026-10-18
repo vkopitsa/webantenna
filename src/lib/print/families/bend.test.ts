@@ -3,7 +3,7 @@ import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Params } from "../../types";
 import { loadManifold } from "../manifold";
 import { buildPart } from "../parts";
-import { bendPaths, flatten, type Flat } from "../paths";
+import { bendPaths, flatten, signature, type Flat } from "../paths";
 import { MAX_SIZE } from "../rules";
 import { bendParts, plateGroove } from "./bend";
 import { ball, inside, setup } from "./testkit";
@@ -16,10 +16,12 @@ const flats = (id: string, extra: Params = {}) => bendPaths(setup(id, extra).d).
 
 /** The wire lies clear in the groove and has plastic under it, all along the filleted centre line. */
 function probe(plate: Manifold, f: Flat, tag: string) {
-  const g = plateGroove(f).path;
-  if (!f.closed) {   // the wire end butts against the stop: its centre line starts a ball radius in
-    const [a, b] = g, l = Math.hypot(b[0] - a[0], b[1] - a[1]), s = 0.4 * f.d + 0.05;
-    g[0] = [a[0] + (b[0] - a[0]) / l * s, a[1] + (b[1] - a[1]) / l * s];
+  let { path: g } = plateGroove(f);
+  if (!f.closed) {
+    // the wire end butts against the stop (square to start → lead): its centre line starts a ball radius in; a lead
+    // kink shorter than that (0.1 mm on the skycone cage frames) is cut off by the stop
+    const { lead } = plateGroove(f), a = g[0], b = g[lead], l = Math.hypot(b[0] - a[0], b[1] - a[1]), u = [(b[0] - a[0]) / l, (b[1] - a[1]) / l], s = 0.4 * f.d + 0.05;
+    g = [[a[0] + u[0] * s, a[1] + u[1] * s], ...g.filter((q, i) => i >= lead || (q[0] - a[0]) * u[0] + (q[1] - a[1]) * u[1] >= s)];
   }
   for (const [x, y] of g) {
     expect(inside(plate, ball(M, [x, y, 0], 0.8 * f.d)), `${tag} clear at ${x},${y}`).toBeLessThan(1e-3);
@@ -51,17 +53,50 @@ describe("bend plate", () => {
     const plate = ps[0].build(M)[0];
     for (const hand of ["rhcp", "lhcp"]) {
       const fs = flats("cloverleaf", { leaves, hand });
-      // the left-hand leaf is the mirror image: the same plate holds it (flatten lays it out the same way up to mirror)
-      expect(plates("cloverleaf", { leaves, hand })[0].title).toBe(ps[0].title);
+      // the left-hand leaf is the mirror image of the right-hand one (y → −y): the same shape, so the same plate holds it
+      const q = bendPaths(setup("cloverleaf", { leaves, hand }).d)[0].pts, r = bendPaths(setup("cloverleaf", { leaves }).d)[0].pts;
+      if (hand === "lhcp") expect(q.some((x, i) => Math.abs(x[1] - r[i][1]) > 1)).toBe(true);
+      expect(signature(fs[0])).toBe(signature(flats("cloverleaf", { leaves })[0]));
       probe(plate, fs[0], `${leaves} ${hand}`);
     }
   }, 60_000);
-  it("cloverleaf: the open groove starts with a flat stop (no overrun before the first point)", () => {
-    const [f] = flats("cloverleaf"), plate = plates("cloverleaf")[0].build(M)[0];
-    const g = plateGroove(f).path, [a, b] = g, l = Math.hypot(b[0] - a[0], b[1] - a[1]), u = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
-    // 0.6 mm back from the start along the first segment's line, just below the top face: plastic (the stop)
-    const p = [a[0] - u[0] * 0.6, a[1] - u[1] * 0.6, -0.2] as [number, number, number];
-    expect(inside(plate, M.Manifold.cube([0.2, 0.2, 0.2], true).translate(p))).toBeGreaterThan(0.9 * 0.008);
+  it.each(["cloverleaf", "skyconecage"])("%s: every open groove starts with a flat stop, even after a short lead", (id) => {
+    const seen = new Set<string>(), fs = flats(id).filter((f) => !seen.has(signature(f)) && !!seen.add(signature(f)) && Math.max(...f.size) + 8 <= MAX_SIZE);
+    const ps = plates(id);
+    expect(ps).toHaveLength(fs.length);
+    let open = 0;
+    ps.forEach((s, k) => {
+      const f = fs[k];
+      if (f.closed) return;
+      open++;
+      const plate = s.build(M)[0], { path: g, lead } = plateGroove(f), a = g[0], b = g[lead];
+      expect(Math.hypot(b[0] - a[0], b[1] - a[1])).toBeGreaterThan(1);
+      probe(plate, f, s.id);
+      const l = Math.hypot(b[0] - a[0], b[1] - a[1]), u = [(b[0] - a[0]) / l, (b[1] - a[1]) / l];
+      // behind the start along the piece's first direction, just below the top face: plastic (the stop)
+      for (const t of [0.3, 0.6, 1]) {
+        const c = M.Manifold.cube([0.2, 0.2, 0.2], true).translate([a[0] - u[0] * t, a[1] - u[1] * t, -0.2]);
+        expect(inside(plate, c), `${s.id} ${t} mm`).toBeGreaterThan(0.9 * 0.008);
+      }
+    });
+    expect(open).toBeGreaterThan(0);
+  }, 60_000);
+  it("biquad: pegs inside the corners, up to d + 1 above the top face", () => {
+    const [f] = flats("biquad"), plate = plates("biquad")[0].build(M)[0], { pegs } = plateGroove(f);
+    expect(pegs.length).toBeGreaterThan(0);
+    expect(pegs.length).toBeLessThanOrEqual(f.corners.length);
+    const cube = (z: number, c: [number, number]) => M.Manifold.cube([0.2, 0.2, 0.2], true).translate([c[0], c[1], z]);
+    const n = f.pts.length, at = (i: number) => [f.pts[(i + n) % n][0] + 4, f.pts[(i + n) % n][1] + 4];
+    for (const p of pegs) {
+      expect(p.r).toBeCloseTo(Math.max(1.5, f.d), 6);
+      expect(inside(plate, cube(f.d + 0.8, p.c))).toBeGreaterThan(0.9 * 0.008);
+      expect(inside(plate, cube(f.d + 1.2, p.c))).toBeLessThan(1e-6);
+      // inner side: within the angle of the nearest corner (on the side of the sum of its two edge directions)
+      const k = f.corners.reduce((m, i) => (Math.hypot(at(i)[0] - p.c[0], at(i)[1] - p.c[1]) < Math.hypot(at(m)[0] - p.c[0], at(m)[1] - p.c[1]) ? i : m));
+      const V = at(k), A = at(k - 1), B = at(k + 1), e = (Q: number[]) => { const l = Math.hypot(Q[0] - V[0], Q[1] - V[1]); return [(Q[0] - V[0]) / l, (Q[1] - V[1]) / l]; };
+      const bis = [e(A)[0] + e(B)[0], e(A)[1] + e(B)[1]];
+      expect((p.c[0] - V[0]) * bis[0] + (p.c[1] - V[1]) * bis[1]).toBeGreaterThan(0);
+    }
   });
   it("quad at 1.27 GHz: one plate per loop size", () => {
     expect(flats("quad", { bands: "1240e6-1300e6" })).toHaveLength(2);

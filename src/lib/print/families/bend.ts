@@ -3,7 +3,7 @@ import type { Design } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { bendPaths, filleted, flatten, signature, type BendPath, type Flat, type Groove, type P2 } from "../paths";
 import { CLEAR, MAX_SIZE } from "../rules";
-import { channel, rod, type V3 } from "../shapes";
+import { rod, type V3 } from "../shapes";
 
 // Bend jigs for planar bent wires (quad loops, biquad, cloverleaf leaves, folded dipoles): a plate with the piece's
 // groove, the same for every identical piece. Geometry comes from the design's wires (print/paths.ts).
@@ -30,27 +30,35 @@ export const BEND_HOWTO: { plate: string[]; corner: string[]; mandrel: string[];
 const D_MAX = 3;      // thicker wire is not bent in a printed jig
 const MARGIN = 4;     // plastic round the groove, as skycone-bend
 
-/** The filleted groove in plate coordinates (the flat piece shifted by the margin); start = groove point at the piece's first point. */
-export function plateGroove(f: Flat): Groove & { start: number } {
+const LEAD = 1;       // mm: an open groove's stop faces along the path from its start to the first point this far away
+
+/** The filleted groove in plate coordinates (the flat piece shifted by the margin); start = groove point at the piece's
+ *  first point; lead = first groove point more than LEAD from the start (the stop faces along start → lead). */
+export function plateGroove(f: Flat): Groove & { start: number; lead: number } {
   const g = filleted(f), sh = ([x, y]: P2): P2 => [x + MARGIN, y + MARGIN], s = sh(f.pts[0]);
-  const path = g.path.map(sh), dist = (q: P2) => Math.hypot(q[0] - s[0], q[1] - s[1]);
-  return { path, pegs: g.pegs.map((p) => ({ c: sh(p.c), r: p.r })), start: path.reduce((m, q, i) => (dist(q) < dist(path[m]) ? i : m), 0) };
+  const path = g.path.map(sh), dist = (q: P2) => Math.hypot(q[0] - s[0], q[1] - s[1]), lead = path.findIndex((q) => dist(q) > LEAD);
+  return { path, pegs: g.pegs.map((p) => ({ c: sh(p.c), r: p.r })), start: path.reduce((m, q, i) => (dist(q) < dist(path[m]) ? i : m), 0), lead: Math.max(1, lead) };
 }
 
 /** Plate z ∈ [−T, 0] with the wire centre on the top face: groove (open: flat stop at the start), pegs up to d + 1, closed: start notch. */
 function plate(M: ManifoldToplevel, f: Flat): Manifold {
-  const { path, pegs, start } = plateGroove(f), d = f.d, T = Math.max(3, d + 2), n = path.length;
+  const { path, pegs, start, lead } = plateGroove(f), d = f.d, T = Math.max(3, d + 2), n = path.length;
   const W = f.size[0] + 2 * MARGIN, H = f.size[1] + 2 * MARGIN, at = (q: P2): V3 => [q[0], q[1], 0];
+  // rods (no overrun) joined by balls at the groove points
+  const seg = (i: number) => rod(M, at(path[i]), at(path[(i + 1) % n]), d + CLEAR), ballAt = (i: number) => M.Manifold.sphere((d + CLEAR) / 2, 16).translate(at(path[i]));
+  const live = (i: number) => Math.hypot(path[(i + 1) % n][0] - path[i][0], path[(i + 1) % n][1] - path[i][1]) > 1e-6;
   const cuts: Manifold[] = [];
-  for (let i = 0; i < (f.closed ? n : n - 1); i++) {
-    const a = path[i], b = path[(i + 1) % n];
-    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 1e-6) continue;
-    // open: a flat stop at the start (no overrun, no ball) and a round end at the last point (no overrun: the stop
-    // may sit next to it, as on a cloverleaf leaf whose two ends meet at the hub)
-    if (!f.closed && (i === 0 || i === n - 2)) cuts.push(rod(M, at(a), at(b), d + CLEAR));
-    else cuts.push(channel(M, at(a), at(b), d));
+  if (f.closed) for (let i = 0; i < n; i++) { if (live(i)) cuts.push(seg(i)); cuts.push(ballAt(i)); }
+  else {
+    // open: the lead (up to the first point LEAD from the start) is trimmed by the stop plane through the start, square
+    // to start → lead, so a short kinked lead cannot cut back past it; the rest may pass behind the stop (a cloverleaf
+    // leaf's two ends meet at the hub)
+    const a = path[0], b = path[lead], l = Math.hypot(b[0] - a[0], b[1] - a[1]), u: V3 = [(b[0] - a[0]) / l, (b[1] - a[1]) / l, 0];
+    const head: Manifold[] = [];
+    for (let i = 0; i < lead; i++) { if (live(i)) head.push(seg(i)); if (i > 0) head.push(ballAt(i)); }
+    cuts.push(M.Manifold.union(head).trimByPlane(u, u[0] * a[0] + u[1] * a[1]));
+    for (let i = lead; i < n; i++) { if (i < n - 1 && live(i)) cuts.push(seg(i)); cuts.push(ballAt(i)); }
   }
-  path.forEach((q, i) => { if (f.closed || i > 0) cuts.push(M.Manifold.sphere((d + CLEAR) / 2, 16).translate(at(q))); });
   if (f.closed) {   // 1 mm wide, d/2 deep notch across the groove at the start
     const q = path[start], r = path[(start + 1) % n], ang = Math.atan2(r[1] - q[1], r[0] - q[0]) * 180 / Math.PI;
     cuts.push(M.Manifold.cube([1, d + CLEAR + 4, d], true).rotate([0, 0, ang]).translate(at(q)));
