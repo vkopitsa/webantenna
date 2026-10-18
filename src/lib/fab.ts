@@ -123,15 +123,20 @@ export function fabZip(def: AntennaDef, p: Params, d: Design, base: string, gen:
 }
 
 function readme(def: AntennaDef, p: Params, d: Design, names: string[]): string {
-  const pcb = d.pcb!, pack = buildPack(def, p, d);
+  const pcb = d.pcb!, pack = buildPack(def, p, d), air = def.id === "airpatch";
   const mm = (v: number) => `${(v * 1e3).toFixed(2)} mm`;
   const port = pcb.port, fb = fabBox(pcb), ox = fb.x0, oy = fb.y0;
   const L = [
     `${def.name}: fabrication files from Antenna Generator`,
     "",
     `Design frequency: ${(d.f / 1e6).toFixed(3)} MHz`,
-    `Board: ${mm(fb.x1 - fb.x0)} x ${mm(fb.y1 - fb.y0)}, ${mm(pcb.h)} thick, er ${pcb.er}, tan d ${pcb.tanD}, copper ${(pcb.t * 1e6).toFixed(0)} um`,
-    ...(pcb.levels?.length ? [
+    ...(air ? [
+      `Air patch, not a laminate: the bottom layer (.GBL / BOTTOM) is the ground plate, ${mm(fb.x1 - fb.x0)} x ${mm(fb.y1 - fb.y0)}, and the top layer (.GTL / TOP) is the patch plate, which hangs ${mm(pcb.h)} above it on nylon standoffs.`,
+      `Cut both from ${mm(pcb.t)} sheet (copper, brass or aluminium) with a laser, waterjet or by hand from the 1:1 template; or order single-sided laminate, copper side facing the other plate. The DXF layers are the cutting paths (the outline of the patch layer is the ground plate's: cut the TOP rectangles only).`,
+      `Holes (.DRL, DRILL layer): the probe hole in both plates, the standoff holes on the line x = 0.`,
+      ...(pcb.levels?.length ? [`The director plate is the _part2 set: its top layer and outline are the plate itself, ${mm(pcb.levels[0].z0)} above the patch.`] : []),
+    ] : [`Board: ${mm(fb.x1 - fb.x0)} x ${mm(fb.y1 - fb.y0)}, ${mm(pcb.h)} thick, er ${pcb.er}, tan d ${pcb.tanD}, copper ${(pcb.t * 1e6).toFixed(0)} um`]),
+    ...(pcb.levels?.length && !air ? [
       `Stack: ${pcb.levels.length + 1} boards of the same laminate (files _part1 = the top board, then downwards):`,
       ...boardsOf(pcb).map(({ label, pcb: b }, i) => `  part${i + 1}: ${label}, ${mm(b.board.x1 - b.board.x0)} across, bottom face at z = ${mm(i === 0 ? 0 : pcb.levels![i - 1].z0)}`),
     ] : []),
@@ -154,8 +159,10 @@ function readme(def: AntennaDef, p: Params, d: Design, names: string[]): string 
       : `  Port between X ${mm(Math.min(port.start[0], port.stop[0]) - ox)}..${mm(Math.max(port.start[0], port.stop[0]) - ox)}, Y ${mm(Math.min(port.start[1], port.stop[1]) - oy)}..${mm(Math.max(port.start[1], port.stop[1]) - oy)} (${port.R} ohm). Solder the connector across this gap.`,
     "",
     "Order notes:",
-    "  - No solder mask or silkscreen files: leave the antenna area unmasked (mask lowers the resonance slightly).",
-    "  - Ask the fab for the laminate's er at your frequency; FR-4 varies.",
+    ...(air ? ["  - Bare metal: no solder mask or silkscreen."] : [
+      "  - No solder mask or silkscreen files: leave the antenna area unmasked (mask lowers the resonance slightly).",
+      "  - Ask the fab for the laminate's er at your frequency; FR-4 varies.",
+    ]),
     "",
     "Substrate:",
     ...pack.substrate.map((m) => `  - ${en(m)}`),

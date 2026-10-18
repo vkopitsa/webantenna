@@ -7,9 +7,9 @@ import { band, BANDS } from "./common";
 import { span } from "./pcbcommon";
 
 /** Rectangular microstrip patch (Balanis, Antenna Theory, ch. 14: transmission-line model). */
-export function patchDesign(f: number, er: number, h: number, z0: number) {
+export function patchDesign(f: number, er: number, h: number, z0: number, width?: number) {
   const lam = wavelength(f), k0 = (2 * Math.PI) / lam;
-  const W = (C0 / (2 * f)) * Math.sqrt(2 / (er + 1));
+  const W = width ?? (C0 / (2 * f)) * Math.sqrt(2 / (er + 1));
   const eeff = (er + 1) / 2 + ((er - 1) / 2) * Math.pow(1 + (12 * h) / W, -0.5);
   const dL = (0.412 * h * (eeff + 0.3) * (W / h + 0.264)) / ((eeff - 0.258) * (W / h + 0.8));
   const L = C0 / (2 * f * Math.sqrt(eeff)) - 2 * dL;

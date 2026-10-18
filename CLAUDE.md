@@ -42,8 +42,15 @@ src/lib/                 NO DOM, NO React, NO i18n. Runs in Node (tests) and in 
                          copperBoxes() for extents/keep-outs (polygons by bounding box)
   openems.ts             toOpenEMS(): full FDTD script (mesh, run, S11/Zin/resonances, full-sphere NF2FF, plots, JSON)
   importers.ts           parseOpenEMS (the script's _results.json) and parseTouchstone (.s1p) for the Simulation tab
+  antennas/uwbdisc.ts    UWB disc/ellipse monopole (Printed, broadband, maxRatio 4.5): fL = 7.2/((l+r+p)k) GHz (Agrawal 1998, Liang 2005), microstrip or CPW feed (cpwZ0 in rf.ts), FR-4 / flex / custom
   antennas/pcb*.ts ifa.ts meander.ts printeddipole.ts printedvdipole.ts dualbanddipole.ts sleevedipole.ts pcbloop.ts
                          printed antennas (openEMS / in-browser FDTD calibrated formulas)
+  antennas/airpatch.ts   air (suspended) probe-fed patch: Jackson–Alexopoulos Q, probe inductance X_L (patch cut long to cancel it), sheet-metal build pack;
+                         the director plate is in the Pcb (level) but not in the analytic model (FDTD showed no gain)
+  antennas/patcharray.ts arraylayout.ts arraymodel.ts   2×2…8×8 corporate-fed patch array: layout (feed tree TNode with sections, every path equal;
+                         CP sequential rotation via leaf extension bumps, LHCP = x-mirror), lossy-line network solve + array pattern + AR, the def
+  antennas/pcbcollinear.ts printed collinear (Franklin chain: half-wave strip radiators, meandered λg/2 phasing lines, ground-pour gap feed): pcoSetup/pcoMetrics = pattern-only
+                         model (simulate.ts pcbCollinearSim, idealcurrents branch, axis = board y); the transposed-microstrip COCO was tried and dropped (FDTD: 1.2 dBi broadside, docs/ANTENNAS.md)
   build.ts               build pack: pieces() chains wires into physical parts; BOM, cut list, tuning sensitivity
                          (rebuild at +1 % frequency), substrate notes, steps, advise() for measured .s1p
   fab.ts zip.ts          Gerber RS-274X X2 / Excellon / DXF R12 / README in a stored zip (Protel extensions)

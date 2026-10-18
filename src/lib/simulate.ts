@@ -3,6 +3,11 @@
 import type { AntennaDef, Design, Params } from "./types";
 import { buildMesh, gainFn, solve } from "./mom";
 import { patchDesign } from "./antennas/patch";
+import { airRaw, airSetup, airZ } from "./antennas/airpatch";
+import { axialRatio, cpResponse, cpScan, cpSetup } from "./antennas/cppatch";
+import { arBoresight, arrayMetrics, arrayScan, netSolve } from "./antennas/arraymodel";
+import { arrayLayout } from "./antennas/arraylayout";
+import { pcoMetrics, pcoSetup } from "./antennas/pcbcollinear";
 import { loopModel, loopTraceW, loopZin } from "./antennas/pcbloop";
 import { SKYCONE_TABLES, skyconeGain, skyconeRange, skyconeZ } from "./antennas/skycone";
 import { num } from "./types";
@@ -28,6 +33,12 @@ export interface SimResult {
   pattern: Pattern | null;
   /** Mesh size of the pattern solve (MoM). */
   unknowns?: number;
+  /** Circularly polarised designs: boresight axial ratio (dB) per frequency, the hand, the value at the design frequency and the
+   *  width (Hz) of the AR < 3 dB range round it. The pattern is then the co-polar circular gain (dBic). */
+  ar?: { f: number; dB: number }[];
+  sense?: "rhcp" | "lhcp";
+  arF0?: number;
+  arBw?: number;
   notes: string[];
 }
 
@@ -145,6 +156,76 @@ function patchSim(params: Params, d: Design, freqs: number[], fPat: number): Sim
   };
 }
 
+/** Air patch (airpatch.ts): cavity impedance with the probe inductance in series, and the two-slot pattern over an infinite ground (slot height included), upper hemisphere. */
+function airPatchSim(params: Params, d: Design, freqs: number[], fPat: number): SimResult {
+  const { q } = airSetup(params, d.f);
+  const z = freqs.map((f) => { const [r, x] = airZ(q.model, f); return { f, r, x }; });
+  const raw = airRaw(q, fPat);
+  let P = 0;
+  for (let t = 0.5; t < 90; t += 1) for (let p = 0.5; p < 360; p += 1) P += raw(t * DEG, p * DEG) * Math.sin(t * DEG) * DEG * DEG;
+  const g = (th: number, ph: number) => 10 * Math.log10(Math.max((4 * Math.PI * raw(th, ph)) / P, 1e-6));
+  return {
+    method: "analytic", z, pattern: samplePattern(fPat, g),
+    notes: ["Air patch: cavity impedance with the probe inductance, two-slot pattern over an infinite ground plane (no back radiation); a director is not modelled. Use the FDTD for final numbers."],
+  };
+}
+
+/**
+ * Patch array (patcharray.ts, arraymodel.ts): the corporate-feed network solved as a lossy-line circuit (Zin at the port, amplitude and phase at
+ * every element), element field × array factor over an infinite ground plane, normalised to directivity; the gain pattern includes the feed
+ * line loss, the patches' dielectric loss and the mismatch. CP: co-polar circular gain and the boresight axial ratio of the sequentially rotated sum.
+ */
+function patchArraySim(params: Params, d: Design, freqs: number[], fPat: number): SimResult {
+  const L = arrayLayout(params, d.f);
+  const z = freqs.map((f) => { const n = netSolve(L, f); return { f, r: n.z[0], x: n.z[1] }; });
+  const m = arrayMetrics(L, fPat, 1), off = m.gain - m.d0, g = (th: number, ph: number) => m.dir(th, ph) + off;
+  const scan = arrayScan(L);
+  return {
+    method: "analytic", z, pattern: samplePattern(fPat, g),
+    ...(L.cp ? { ar: freqs.map((f) => ({ f, dB: arBoresight(L, f) })), sense: L.lhcp ? "lhcp" as const : "rhcp" as const, arF0: arBoresight(L, d.f), arBw: scan.arBw } : {}),
+    notes: [L.cp
+      ? "Circularly polarised patch array: lossy-line circuit of the corporate feed, truncated-corner elements rotated 0/90/180/270° with matching feed phases, array factor over an infinite ground plane. The pattern is the co-polar circular gain (dBic) including feed, dielectric and mismatch losses; the axial ratio is on the boresight. No mutual coupling. Use the FDTD or openEMS for final numbers."
+      : "Patch array: lossy-line circuit of the corporate feed (impedance at the port), two-slot element pattern times the array factor over an infinite ground plane, gain with feed, dielectric and mismatch losses. No mutual coupling or surface waves. Use the FDTD or openEMS for final numbers."],
+  };
+}
+
+/**
+ * Circularly polarised patch: the two orthogonal cavity modes of cppatch.ts radiate like the patch's two slots, one rotated by 90°.
+ * Eθ = Ax sx cos φ + Ay sy sin φ, Eφ = cos θ (−Ax sx sin φ + Ay sy cos φ); the pattern is the co-polar circular gain
+ * (Eθ + jEφ)/√2 for RHCP, (Eθ − jEφ)/√2 for LHCP (the cpGainFn convention), normalised to the radiated power.
+ */
+function cpPatchSim(params: Params, d: Design, freqs: number[], fPat: number): SimResult {
+  const { lhcp, q, model } = cpSetup(params, d.f);
+  const z = freqs.map((f) => { const { z: zz } = cpResponse(model, f); return { f, r: zz[0], x: zz[1] }; });
+  const ar = freqs.map((f) => { const a = cpResponse(model, f); return { f, dB: axialRatio(a.ax, a.ay) }; });
+  const { ax, ay } = cpResponse(model, fPat), k0 = (2 * Math.PI * fPat) / C0, Le = q.aT + 2 * q.dL, W = q.aT;
+  const slot = (th: number, ph: number) => {
+    const af = Math.cos((k0 * Le * Math.sin(th) * Math.cos(ph)) / 2), xw = (k0 * W * Math.sin(th) * Math.sin(ph)) / 2;
+    return af * (Math.abs(xw) < 1e-9 ? 1 : Math.sin(xw) / xw);
+  };
+  let P = 0; // ∫ |Fx|² dΩ over the upper hemisphere (|Fy|² is the same, the cross term integrates to 0)
+  for (let t = 0.5; t < 90; t += 1) for (let p = 0.5; p < 360; p += 1) {
+    const th = t * DEG, ph = p * DEG, s = slot(th, ph);
+    P += s * s * (Math.cos(ph) ** 2 + (Math.cos(th) * Math.sin(ph)) ** 2) * Math.sin(th) * DEG * DEG;
+  }
+  const prad = P * (ax[0] ** 2 + ax[1] ** 2 + ay[0] ** 2 + ay[1] ** 2), sg = lhcp ? -1 : 1;
+  const g = (th: number, ph: number) => {
+    if (th > Math.PI / 2) return -60;
+    const sx = slot(th, ph), sy = slot(th, ph - Math.PI / 2), c = Math.cos(th);
+    // Eθ = ax sx cosφ + ay sy sinφ, Eφ = c (ay sy cosφ − ax sx sinφ): complex
+    const et: [number, number] = [ax[0] * sx * Math.cos(ph) + ay[0] * sy * Math.sin(ph), ax[1] * sx * Math.cos(ph) + ay[1] * sy * Math.sin(ph)];
+    const ep: [number, number] = [c * (ay[0] * sy * Math.cos(ph) - ax[0] * sx * Math.sin(ph)), c * (ay[1] * sy * Math.cos(ph) - ax[1] * sx * Math.sin(ph))];
+    // Eθ + j sg Eφ
+    const re = et[0] - sg * ep[1], im = et[1] + sg * ep[0];
+    return 10 * Math.log10(Math.max((4 * Math.PI * (re * re + im * im) * 0.5) / prad, 1e-6));
+  };
+  const scan = cpScan(model);
+  return {
+    method: "analytic", z, pattern: samplePattern(fPat, g), ar, sense: lhcp ? "lhcp" : "rhcp", arF0: scan.ar(d.f), arBw: scan.arBw,
+    notes: ["Circularly polarised patch: cavity-model impedance and axial ratio from two orthogonal modes, with the patch's two-slot pattern for each, over an infinite ground plane. The pattern is the co-polar circular gain (dBic); the axial ratio is on the boresight. Use openEMS or another full-wave tool for final numbers."],
+  };
+}
+
 /**
  * Coaxial collinear: N λ/2 dipoles stacked along z (array factor × dipole pattern). The sections are `sec` = λ(f design)/2 × VF
  * apart (the geometry in collinear.ts, fixed in metres); each coax section adds 2π f sec/(c VF) of phase and the crossed joint
@@ -167,6 +248,18 @@ function collinearSim(params: Params, d: Design, fPat: number): SimResult {
   return {
     method: "pattern-only", z: [], pattern: samplePattern(fPat, (th) => g(th)),
     notes: ["Collinear: ideal array-factor pattern (equal currents, in phase at the design frequency). No impedance: a wire model cannot represent the coax."],
+  };
+}
+
+/**
+ * Printed collinear (pcbcollinear.ts): half-sine radiator currents in phase at f0 with the phase drift of the meander delay, element pattern times
+ * array factor about the board's long axis (y), normalised over the sphere, minus the line loss. Pattern only: no credible analytic impedance.
+ */
+function pcbCollinearSim(params: Params, d: Design, fPat: number): SimResult {
+  const m = pcoMetrics(pcoSetup(params, d.f), fPat);
+  return {
+    method: "pattern-only", z: [], pattern: samplePattern(fPat, (th, ph) => m.dir(th, ph) - m.loss),
+    notes: ["Printed collinear: half-sine radiator currents in phase at the design frequency, with the phase drift of the meander delay, times the element pattern, over the whole sphere, minus the estimated losses. No impedance: run the FDTD or the openEMS export."],
   };
 }
 
@@ -209,7 +302,7 @@ function skyconeSim(defId: string, d: Design, fPat: number): SimResult {
 
 /** True when the wire MoM solver models this design (the `method: "mom"` path of simulate()). */
 export function momEligible(defId: string, d: Design): boolean {
-  return defId !== "patch" && defId !== "collinear" && defId !== "pcbloop" && !d.pcb && !!d.necSupported && !!d.feed;
+  return defId !== "patch" && defId !== "cppatch" && defId !== "airpatch" && defId !== "patcharray" && defId !== "collinear" && defId !== "pcbloop" && !d.pcb && !!d.necSupported && !!d.feed;
 }
 
 /**
@@ -229,10 +322,14 @@ export interface SimOptions {
 }
 
 export function simulate(def: AntennaDef, params: Params, d: Design, opt: SimOptions = {}): SimResult {
-  const freqs = def.id === "patch" ? sweepFreqs(d, 101, true) : sweepFreqs(d, opt.perBand ?? 21);
+  const freqs = def.id === "patch" || def.id === "cppatch" || def.id === "airpatch" || def.id === "patcharray" ? sweepFreqs(d, 101, true) : sweepFreqs(d, opt.perBand ?? 21);
   const fPat = opt.patternF ?? d.f;
   if (def.id === "patch") return patchSim(params, d, freqs, fPat);
+  if (def.id === "cppatch") return cpPatchSim(params, d, freqs, fPat);
+  if (def.id === "airpatch") return airPatchSim(params, d, freqs, fPat);
+  if (def.id === "patcharray") return patchArraySim(params, d, freqs, fPat);
   if (def.id === "collinear") return collinearSim(params, d, fPat);
+  if (def.id === "pcbcollinear") return pcbCollinearSim(params, d, fPat);
   if (def.id === "pcbloop") return loopSim(params, d, sweepFreqs(d, 101, true), fPat);
   if (SKYCONE_TABLES[def.id]) return skyconeSim(def.id, d, fPat);
   if (d.pcb) return { method: "openems", z: [], pattern: null, notes: ["Printed antenna on a dielectric: the wire solver cannot model it. Run the FDTD above, or export the openEMS script and load its results file here."] };
@@ -263,6 +360,13 @@ export const patternChoices = (params: Params, d: Design): number[] => {
   return b.length ? [...new Set(b.map(centre))] : [d.f];
 };
 
+/** Lowest frequency where |S11| falls below −10 dB (interpolated in dB), for broadband designs whose tuning target is the band edge; null when it never does. */
+export function lowerEdge(z: ZPoint[], z0: number): number | null {
+  const g = z.map((p) => 10 * Math.log10(((p.r - z0) ** 2 + p.x ** 2) / ((p.r + z0) ** 2 + p.x ** 2) + 1e-30));
+  for (let i = 0; i < z.length; i++) if (g[i] <= -10) return i === 0 ? z[0].f : z[i - 1].f + ((z[i].f - z[i - 1].f) * (g[i - 1] + 10)) / (g[i - 1] - g[i]);
+  return null;
+}
+
 /** Reflection coefficient and derived values for reference impedance z0. */
 export function s11(p: ZPoint, z0: number) {
   const nr = p.r - z0, ni = p.x, dr = p.r + z0, di = p.x;
@@ -286,9 +390,14 @@ export const SIM_STRINGS = [
   "FDTD ({0}) tuned, trim {1} %", "FDTD ({0}) tuned, trim {1} %, did not converge: approximate", "FDTD (not run): {0}",
   "Horizontal plane XY (θ = 90°)", "Vertical plane XZ (φ = 0°)", "Vertical plane YZ (φ = 90°)",
   "Patch: cavity-model impedance and two-slot pattern over an infinite ground plane (no back radiation). Use openEMS or another full-wave tool for final numbers.",
+  "Air patch: cavity impedance with the probe inductance, two-slot pattern over an infinite ground plane (no back radiation); a director is not modelled. Use the FDTD for final numbers.",
+  "Circularly polarised patch: cavity-model impedance and axial ratio from two orthogonal modes, with the patch's two-slot pattern for each, over an infinite ground plane. The pattern is the co-polar circular gain (dBic); the axial ratio is on the boresight. Use openEMS or another full-wave tool for final numbers.",
+  "Circularly polarised patch array: lossy-line circuit of the corporate feed, truncated-corner elements rotated 0/90/180/270° with matching feed phases, array factor over an infinite ground plane. The pattern is the co-polar circular gain (dBic) including feed, dielectric and mismatch losses; the axial ratio is on the boresight. No mutual coupling. Use the FDTD or openEMS for final numbers.",
+  "Patch array: lossy-line circuit of the corporate feed (impedance at the port), two-slot element pattern times the array factor over an infinite ground plane, gain with feed, dielectric and mismatch losses. No mutual coupling or surface waves. Use the FDTD or openEMS for final numbers.",
   "Collinear: ideal array-factor pattern (equal currents, in phase at the design frequency). No impedance: a wire model cannot represent the coax.",
   "Thin-wire Method of Moments (MININEC formulation), free space, perfect conductors. Checked against NEC-2 on converged models.",
   "Printed antenna on a dielectric: the wire solver cannot model it. Run the FDTD above, or export the openEMS script and load its results file here.",
+  "Printed collinear: half-sine radiator currents in phase at the design frequency, with the phase drift of the meander delay, times the element pattern, over the whole sphere, minus the estimated losses. No impedance: run the FDTD or the openEMS export.",
   "Small loop: analytic model (matched with Cs + Cp at the design frequency; magnetic-dipole pattern, efficiency included).",
   "Sky-tilted bicone: precomputed body-of-revolution MoM sweep of this shape (solid sheet metal, free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones.",
   SKYCONE_OUT,

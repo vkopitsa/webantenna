@@ -13,9 +13,14 @@ import { cloverleaf } from "./cloverleaf";
 import { spring } from "./spring";
 import { pagoda } from "./pagoda";
 import { patch } from "./patch";
+import { cppatch } from "./cppatch";
+import { airpatch } from "./airpatch";
+import { patcharray } from "./patcharray";
 import { discone } from "./discone";
 import { fandipole } from "./fandipole";
 import { pcbmonopole } from "./pcbmonopole";
+import { uwbdisc } from "./uwbdisc";
+import { pcbcollinear } from "./pcbcollinear";
 import { ifa } from "./ifa";
 import { meander } from "./meander";
 import { printeddipole } from "./printeddipole";
@@ -71,7 +76,7 @@ function withBands(def: AntennaDef): AntennaDef {
   };
 }
 
-export const ANTENNAS: AntennaDef[] = [dipole, fandipole, groundplane, spring, jpole, collinear, yagi, moxon, quad, biquad, helix, cloverleaf, pagoda, patch, pcbmonopole, meander, ifa, printeddipole, printedvdipole, dualbanddipole, sleevedipole, pcbloop, discone, skycone7, skyconecage, skyconecagemini, skyconecage40, skycone40, skyconecage44, skyconecage55, skycone8, skycone21].map(withBands);
+export const ANTENNAS: AntennaDef[] = [dipole, fandipole, groundplane, spring, jpole, collinear, yagi, moxon, quad, biquad, helix, cloverleaf, pagoda, patch, cppatch, airpatch, patcharray, pcbmonopole, uwbdisc, meander, ifa, printeddipole, printedvdipole, dualbanddipole, sleevedipole, pcbcollinear, pcbloop, discone, skycone7, skyconecage, skyconecagemini, skyconecage40, skycone40, skyconecage44, skyconecage55, skycone8, skycone21].map(withBands);
 /** The broadband type with the widest single-antenna coverage (maxRatio). */
 export const WIDEST = ANTENNAS.reduce<AntennaDef | null>((w, a) => (a.maxRatio && (!w || a.maxRatio > w.maxRatio!) ? a : w), null)!;
 /** Null prototype: ids come from share links and localStorage, and "constructor" / "__proto__" must not resolve. */

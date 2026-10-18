@@ -4,6 +4,10 @@ import type { AntennaDef, Design, Params } from "./types";
 import { ANTENNAS } from "./antennas";
 import { buildMesh, gainFn, solve } from "./mom";
 import { patchDesign } from "./antennas/patch";
+import { airDirectivity, airSetup, airZ } from "./antennas/airpatch";
+import { axialRatio, cpResponse, cpSetup } from "./antennas/cppatch";
+import { arrayLayout } from "./antennas/arraylayout";
+import { arBoresight, arrayMetrics, netSolve } from "./antennas/arraymodel";
 import { loopModel, loopTraceW, loopZin } from "./antennas/pcbloop";
 import { SKYCONE_TABLES, skyconeGain, skyconeZ } from "./antennas/skycone";
 import { centre, formatBands, type Band } from "./bands";
@@ -56,7 +60,9 @@ function knobs(id: string, o: SynthOptions): Knob[] {
     case "cloverleaf": return [trim, { key: "tilt", lo: 35, hi: 55 }];
     case "discone": return [trim, { key: "half", lo: 25, hi: 40 }];
     case "fandipole": return [{ key: "fan", lo: 10, hi: 45 }];
-    case "patch": return [{ key: "h", lo: 0.4e-3, hi: Math.min(3.2e-3, 0.06 * wavelength(centre(o.bands[0])) / Math.sqrt(o.er)) }];
+    case "patch": case "cppatch": return [{ key: "h", lo: 0.4e-3, hi: Math.min(3.2e-3, 0.06 * wavelength(centre(o.bands[0])) / Math.sqrt(o.er)) }];
+    case "airpatch": return [{ key: "hf", lo: 0.03, hi: 0.09 }];
+    case "patcharray": return [{ key: "trim", lo: -8, hi: 8 }, { key: "dsp", lo: 0.6, hi: 0.95 }];
     case "pcbloop": return [{ key: "a", lo: 0.01, hi: Math.min(0.08, 0.1 * wavelength(centre(o.bands[0]))) }, { key: "b", lo: 0.01, hi: Math.min(0.08, 0.1 * wavelength(centre(o.bands[0]))) }];
     default: return [];
   }
@@ -65,6 +71,8 @@ function knobs(id: string, o: SynthOptions): Knob[] {
 /** Discrete variants explored as separate starts (e.g. Yagi element count, helix turns). */
 function variants(id: string, o: SynthOptions): Params[] {
   if (id === "yagi") return (o.goal === "small" ? [3, 4] : o.goal === "gain" ? [5, 9, 15] : [3, 5, 9]).map((n) => ({ n, driven: "folded" }));
+  if (id === "patcharray") return (o.goal === "small" ? ["2x2"] : o.goal === "gain" ? ["4x4", "8x8"] : ["2x2", "4x4"]).map((size) => ({ size, ...(o.pol === "circular" ? { elem: "cp", hand: "rhcp" } : {}) }));
+  if (id === "pcbcollinear") return (o.goal === "small" ? [4] : o.goal === "gain" ? [8, 12] : [6]).map((n) => ({ n }));
   if (id === "helix") return (o.goal === "small" ? [4] : o.goal === "gain" ? [8, 14] : [6, 10]).map((turns) => ({ turns }));
   return [{}];
 }
@@ -83,8 +91,9 @@ function candidates(o: SynthOptions): AntennaDef[] {
     if (o.pattern === "beam" && t.pattern !== "beam") return false;
     // Size sanity: printed antennas above ~6 GHz or below ~100 MHz, patches/helices below 300 MHz are impractical.
     const f = centre(o.bands[0]);
-    if (printed && (f < 100e6 || f > 10e9) && a.id !== "patch") return false;
-    if ((a.id === "patch" || a.id === "helix" || a.id === "biquad") && f < 300e6) return false;
+    if (printed && (f < 100e6 || f > 10e9) && a.id !== "patch" && a.id !== "cppatch" && a.id !== "airpatch" && a.id !== "patcharray") return false;
+    if ((a.id === "patch" || a.id === "cppatch" || a.id === "airpatch" || a.id === "helix" || a.id === "biquad") && f < 300e6) return false;
+    if (a.id === "patcharray" && f < 1e9) return false; // 2 × 2 at 1 GHz is already 0.5 m
     return true;
   });
 }
@@ -103,7 +112,7 @@ const swrOf = (r: number, x: number, z0: number) => {
 };
 
 /** Evaluate one parameter set: worst SWR per band (3 points per band: edges + centre) and peak gain at band 1. */
-function evaluate(def: AntennaDef, p: Params, o: SynthOptions, withGain: boolean): { swr: number[]; gain: number; size: number; z0: number } | null {
+function evaluate(def: AntennaDef, p: Params, o: SynthOptions, withGain: boolean): { swr: number[]; gain: number; size: number; z0: number; ar?: number } | null {
   let d: Design;
   try { d = def.build(p); } catch { return null; }
   const z0 = d.feedZ0 ?? 50;
@@ -114,6 +123,27 @@ function evaluate(def: AntennaDef, p: Params, o: SynthOptions, withGain: boolean
     const R0 = q.Rin * Math.cos((Math.PI * q.y0) / q.L) ** 2, Q = 1 / (Math.SQRT2 * q.bw);
     const swr = o.bands.map((b) => Math.max(...pts(b).map((f) => { const u = Q * (f / d.f - d.f / f), den = 1 + u * u; return swrOf(R0 / den, (-R0 * u) / den, z0); })));
     return { swr, gain: 6.5, size: sizeOf(d, lamLow), z0 };
+  }
+  if (def.id === "cppatch") {
+    // cavity model of cppatch.ts: SWR and boresight axial ratio over every band (worst edge / centre point); CP gain ≈ 6.5 dBic like the patch
+    const { model } = cpSetup(p, d.f);
+    const swr = o.bands.map((b) => Math.max(...pts(b).map((f) => { const [zr, zx] = cpResponse(model, f).z; return swrOf(zr, zx, z0); })));
+    const ar = Math.max(...o.bands.flatMap((b) => pts(b).map((f) => { const a = cpResponse(model, f); return axialRatio(a.ax, a.ay); })));
+    return { swr, gain: 6.5, size: sizeOf(d, lamLow), z0, ar };
+  }
+  if (def.id === "patcharray") {
+    // lossy-line circuit of arraymodel.ts: SWR at the port over every band, gain (directivity − feed, element and mismatch loss, 5° integration) at the worst band centre, CP: worst boresight AR
+    const L = arrayLayout(p, d.f);
+    const swr = o.bands.map((b) => Math.max(...pts(b).map((f) => { const n = netSolve(L, f); return swrOf(n.z[0], n.z[1], z0); })));
+    const gain = withGain ? Math.min(...o.bands.map((b) => arrayMetrics(L, centre(b), 5).gain)) : 12;
+    const ar = L.cp ? Math.max(...o.bands.flatMap((b) => pts(b).map((f) => arBoresight(L, f)))) : undefined;
+    return { swr, gain, size: sizeOf(d, lamLow), z0, ar };
+  }
+  if (def.id === "airpatch") {
+    // cavity + probe model of airpatch.ts (SWR over every band); two-slot directivity, 5° grid
+    const { q } = airSetup(p, d.f);
+    const swr = o.bands.map((b) => Math.max(...pts(b).map((f) => { const [zr, zx] = airZ(q.model, f); return swrOf(zr, zx, z0); })));
+    return { swr, gain: withGain ? airDirectivity(q, d.f, 5) : 9, size: sizeOf(d, lamLow), z0 };
   }
   if (def.id === "pcbloop") {
     const m = loopModel(d.f, num(p, "a", 0.03), num(p, "b", 0.02), loopTraceW(num(p, "a", 0.03), num(p, "b", 0.02), num(p, "w", 2e-3)), num(p, "t", 35e-6), 5.8e7, num(p, "qc", 300));
@@ -174,15 +204,16 @@ function evaluate(def: AntennaDef, p: Params, o: SynthOptions, withGain: boolean
 /** Mismatch loss in dB for an SWR. */
 const mlDb = (s: number) => { const g = (s - 1) / (s + 1); return -10 * Math.log10(Math.max(1 - g * g, 1e-6)); };
 
-function cost(e: { swr: number[]; gain: number; size: number }, goal: Goal): number {
+function cost(e: { swr: number[]; gain: number; size: number; ar?: number }, goal: Goal): number {
   const ml = Math.max(...e.swr.map(mlDb)); // worst band dominates
   const g = Number.isFinite(e.gain) ? e.gain : 0;
   const big = Math.max(0, e.size - 0.5);
+  const arPen = e.ar != null ? 1.5 * Math.max(0, e.ar - 3) : 0; // circular designs: a band edge past the 3 dB axial ratio costs
   switch (goal) {
-    case "match": return 10 * ml + 0.2 * big;
-    case "gain": return 4 * ml - g + 0.1 * big;
-    case "small": return 4 * ml + 3 * e.size;
-    default: return 6 * ml - 0.4 * g + 0.8 * big;
+    case "match": return 10 * ml + 0.2 * big + arPen;
+    case "gain": return 4 * ml - g + 0.1 * big + arPen;
+    case "small": return 4 * ml + 3 * e.size + arPen;
+    default: return 6 * ml - 0.4 * g + 0.8 * big + arPen;
   }
 }
 
@@ -226,7 +257,7 @@ export function synthesize(o: SynthOptions, onProgress?: (done: number, total: n
     const base: Params = { ...def.defaults, bands: bandsStr, ...v };
     if ("d" in def.defaults) base.d = o.d;
     if ("er" in def.defaults) { base.er = o.er; base.h = o.h; }
-    if (def.category === "Printed" && def.id !== "patch" && def.id !== "pcbloop") {
+    if (def.category === "Printed" && def.id !== "patch" && def.id !== "cppatch" && def.id !== "airpatch" && def.id !== "patcharray" && def.id !== "pcbloop") {
       // No in-browser solver for these yet: formula design, listed unscored.
       const d = def.build(base);
       out.push({ id: def.id, name: def.name, params: base, score: NaN, swr: [], feedZ0: d.feedZ0 ?? 50, gain: NaN, size: sizeOf(d, wavelength(Math.min(...o.bands.map((b) => b[0])))), evals: 0, note: "Formula design (openEMS-calibrated); not simulated in the browser yet" });

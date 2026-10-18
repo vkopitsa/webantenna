@@ -6,7 +6,7 @@ import type { Msg } from "./lib/build";
 import { setup } from "./lib/fdtd/setup";
 import { impedance, runCPU, type RunResult } from "./lib/fdtd/cpu";
 import { acceptedPower, farField } from "./lib/fdtd/nf2ff";
-import { samplePattern, type SimResult, type ZPoint } from "./lib/simulate";
+import { lowerEdge, samplePattern, type SimResult, type ZPoint } from "./lib/simulate";
 import { runGPU, gpuAvailable } from "./gpu/fdtdGpu";
 
 export type Engine = "auto" | "gpu" | "cpu";
@@ -19,7 +19,9 @@ const END_CRITERIA = 1e-2, MAX_STEPS = 100000, HARD_MAX_STEPS = 500000;
 export interface FdtdProgress { step: number; decay: number; phase: "run" | "post"; pass?: number; engine: "gpu" | "cpu"; cells: number; fellBack: boolean }
 export interface FdtdOut { result: SimResult; engine: "gpu" | "cpu"; cells: number; steps: number; ms: number; fRes: number | null; params: Params;
   /** Notes for the Simulation tab (translated at render time) and whether the run reached the end criterion. */
-  notes: Msg[]; converged: boolean }
+  notes: Msg[]; converged: boolean;
+  /** fRes is the lower −10 dB edge (broadband designs) rather than a reactance zero. */
+  edge?: boolean }
 
 export async function runFdtd(type: string, params: Params, patternF: number | undefined, engine: Engine, onProgress: (msg: FdtdProgress) => void): Promise<FdtdOut> {
   const def = ANTENNA_BY_ID[type];
@@ -66,7 +68,7 @@ export async function runFdtd(type: string, params: Params, patternF: number | u
     notes,
     converged,
     engine: used, cells: s.nx * s.ny * s.nz, steps: res.steps, ms: performance.now() - t0,
-    fRes: resonance(z, d.f, d.feedZ0 ?? 50), params,
+    ...(def.multiband === "broadband" && lowerEdge(z, d.feedZ0 ?? 50) != null ? { fRes: lowerEdge(z, d.feedZ0 ?? 50), edge: true } : { fRes: resonance(z, d.f, d.feedZ0 ?? 50) }), params,
   };
 }
 

@@ -65,6 +65,31 @@ export function microstripZ0(w: number, er: number, h: number): number {
     : (120 * Math.PI) / (Math.sqrt(e) * (u + 1.393 + 0.667 * Math.log(u + 1.444)));
 }
 
+/** K(k′)/K(k) of the complete elliptic integrals, Hilberg's closed form (Hilberg 1969, error < 3e-6). */
+export function ellipKpK(k: number): number {
+  const kp = Math.sqrt(Math.max(0, 1 - k * k));
+  return k <= Math.SQRT1_2 ? Math.log((2 * (1 + Math.sqrt(kp))) / (1 - Math.sqrt(kp))) / Math.PI : Math.PI / Math.log((2 * (1 + Math.sqrt(k))) / (1 - Math.sqrt(k)));
+}
+
+/**
+ * Coplanar waveguide on a substrate with no ground below it (conformal mapping, zero thickness; Wadell, Transmission
+ * Line Design Handbook §3.6, Simons, Coplanar Waveguide Circuits ch. 2): centre strip s, gap g each side, εr, thickness h.
+ */
+export function cpwZ0(s: number, g: number, er: number, h: number): { z0: number; eeff: number } {
+  const a = s / 2, b = s / 2 + g, k = a / b;
+  const k1 = Math.min(Math.sinh((Math.PI * a) / (2 * h)) / Math.sinh((Math.PI * b) / (2 * h)), 1 - 1e-12); // sinh overflows for h → 0: the ratio is e^{π(a−b)/2h} then
+  const k1c = Number.isFinite(k1) ? k1 : Math.exp((Math.PI * (a - b)) / (2 * h));
+  const eeff = 1 + ((er - 1) / 2) * (ellipKpK(k1c) / ellipKpK(k));
+  return { z0: (30 * Math.PI * ellipKpK(k)) / Math.sqrt(eeff), eeff };
+}
+
+/** CPW gap (each side) for impedance z0 with centre strip s: bisection on cpwZ0 (it falls as the gap shrinks). */
+export function cpwGap(z0: number, s: number, er: number, h: number): number {
+  let lo = s * 1e-3, hi = s * 100;
+  for (let i = 0; i < 60; i++) { const m = Math.sqrt(lo * hi); if (cpwZ0(s, m, er, h).z0 < z0) lo = m; else hi = m; }
+  return Math.sqrt(lo * hi);
+}
+
 /** Piecewise-linear interpolation through sorted (x, y) points, clamped at the ends. */
 export function interp(pts: [number, number][], x: number): number {
   if (x <= pts[0][0]) return pts[0][1];

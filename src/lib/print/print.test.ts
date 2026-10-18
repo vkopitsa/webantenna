@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
+import { cleanup } from "manifold-3d/lib/garbage-collector.js";
 import { ANTENNAS } from "../antennas";
 import type { Params } from "../types";
 import { buildPart, partsFor } from ".";
@@ -40,7 +41,7 @@ describe("partsFor", () => {
     for (const def of ANTENNAS) { const d = def.build(def.defaults); if (def.category === "Printed") expect(partsFor(def.id, def.defaults, d).map((s) => s.id), def.id).toEqual(["shell"]); }
   });
   it("every part of every antenna builds at defaults", () => {
-    for (const def of ANTENNAS) for (const s of partsFor(def.id, def.defaults, def.build(def.defaults))) expect(buildPart(M, s, s.id).ok, `${def.id} ${s.id}`).toBe(true);
+    for (const def of ANTENNAS) { for (const s of partsFor(def.id, def.defaults, def.build(def.defaults))) expect(buildPart(M, s, s.id).ok, `${def.id} ${s.id}`).toBe(true); cleanup(); }
   }, 60_000);
   it("at parameter extremes every part builds or is reported too large, never broken", () => {
     for (const def of ANTENNAS) {
@@ -56,6 +57,7 @@ describe("partsFor", () => {
           if (r.ok) r.segments.forEach((g) => expect(Math.max(...g.size)).toBeLessThanOrEqual(MAX_SIZE));
           else expect(["Too large to print in one piece: {0}", FAIL.thick, FAIL.radome, FAIL.hood, FAIL.room], `${def.id} ${JSON.stringify(extra)} ${s.id}`).toContain(r.error.s);
         }
+        cleanup(); // free each build, as buildParts() does: manifold objects otherwise pile up in the wasm heap
       }
     }
   }, 300_000);

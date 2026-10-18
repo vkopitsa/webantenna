@@ -5,7 +5,8 @@
 import type { AntennaDef, Design, Params, Vec3, Wire } from "./types";
 import { num } from "./types";
 import { centre, formatBands, parseBands } from "./bands";
-import { boardsOf, copperBoxes, isProbe, type Pcb } from "./pcb";
+import { airHeightShift, airSetup } from "./antennas/airpatch";
+import { boardsOf, clusterBoxes, copperBoxes, isProbe, type Pcb } from "./pcb";
 import type { ZPoint } from "./simulate";
 
 export type Arg = string | number | { len: number } | { hz: number } | { pct: number };
@@ -153,20 +154,25 @@ function scaled(def: AntennaDef, p: Params, k: number): Design | null {
 /** Resonant dimension of a printed layout (m) and how it is trimmed. */
 const PRINTED: Record<string, { what: string; how: string; points: number; dim: (pcb: Pcb) => number }> = {
   pcbmonopole: { what: "Antenna trace", how: "Trim {0} off the open end of the trace", points: 1, dim: (p) => sumLong(p, /Antenna trace/) },
+  uwbdisc: { what: "Disc diameter", how: "File {0} off the disc rim in total (diameter), evenly all round", points: 1, dim: (p) => extentX(p, /^Disc/) },
   ifa: { what: "Radiating arm", how: "Trim {0} off the open end of the arm", points: 1, dim: (p) => sumLong(p, /Radiating arm/) },
   meander: { what: "Meander trace (total)", how: "Trim {0} off the end of the last run", points: 1, dim: (p) => sumLong(p, /Meander|Feed lead/) },
   printeddipole: { what: "Dipole arms", how: "Trim {0} off the end of each arm", points: 2, dim: (p) => sumLong(p, /^Arm/) },
   printedvdipole: { what: "Dipole arms", how: "Trim {0} off the end of each arm", points: 2, dim: (p) => sumLong(p, /^Arm/) + polyLong(p, /^Arm/) },
   dualbanddipole: { what: "Main strips", how: "Trim {0} off the end of each main strip (band 1; the branches set band 2)", points: 2, dim: (p) => sumLong(p, /^Arm/) },
+  pcbcollinear: { what: "Radiator length (each)", how: "Trim {0} off the end of each radiator, the open top end first", points: 1, dim: (p) => sumLong(p, /^Radiator/) / Math.max(1, p.rects.filter((q) => /^Radiator/.test(q.label)).length) },
   sleevedipole: { what: "Radiator", how: "Trim {0} off the radiator tip", points: 1, dim: (p) => sumLong(p, /^Radiator/) },
+  cppatch: { what: "Patch side", how: "Trim {0} off each of two adjacent patch edges (keep the patch square)", points: 2, dim: (p) => extentX(p, /Patch/) },
+  airpatch: { what: "Patch length", how: "Trim {0} off the radiating edge opposite the feed", points: 1, dim: (p) => extentX(p, /^Patch/) },
   patch: { what: "Patch length", how: "Trim {0} off the radiating edge opposite the feed", points: 1, dim: (p) => extentX(p, /Patch/) },
+  patcharray: { what: "Patch length", how: "Trim {0} off the radiating edge opposite the feed", points: 1, dim: (p) => { const c = clusterBoxes(copperBoxes(p).filter((q) => q.label === "Patch"))[0]; return c ? c.y1 - c.y0 : 0; } },
 };
 function sumLong(p: Pcb, re: RegExp) { return p.rects.filter((q) => re.test(q.label)).reduce((s, q) => s + Math.max(q.x1 - q.x0, q.y1 - q.y0), 0); }
 /** Polygon strips: the longest edge of each. */
 function polyLong(p: Pcb, re: RegExp) {
   return (p.polys ?? []).filter((q) => re.test(q.label)).reduce((s, q) => s + Math.max(...q.pts.map((a, i) => { const b = q.pts[(i + 1) % q.pts.length]; return Math.hypot(b[0] - a[0], b[1] - a[1]); })), 0);
 }
-function extentX(p: Pcb, re: RegExp) { const rs = p.rects.filter((q) => re.test(q.label)); return Math.max(...rs.map((q) => q.x1)) - Math.min(...rs.map((q) => q.x0)); }
+function extentX(p: Pcb, re: RegExp) { const rs = copperBoxes(p).filter((q) => re.test(q.label)); return Math.max(...rs.map((q) => q.x1)) - Math.min(...rs.map((q) => q.x0)); }
 
 function whatFor(pc: Piece, def: AntennaDef): string {
   if (/^E\d/.test(pc.tag) && def.multiband === "per-band") return "Band element";
@@ -326,6 +332,18 @@ export function bom(def: AntennaDef, d: Design, cuts: CutRow[]): BomRow[] {
     rows.push({ item: M("Trimmer capacitor in parallel with Cs (optional, for tuning)"), qty: M("{0} pc", 1) });
     return rows;
   }
+  if (def.id === "airpatch" && pcb) {
+    // sheet-metal plates on nylon standoffs, not a laminate: the Pcb is the model of the plates only
+    const plate = (b: Pcb["board"]) => [{ len: b.x1 - b.x0 }, { len: b.y1 - b.y0 }] as const;
+    const patchBox = copperBoxes(pcb).filter((q) => /^Patch/.test(q.label))[0], dirL = pcb.levels?.[0];
+    rows.push({ item: M("Metal plate {0} × {1}", ...plate(pcb.board)), qty: M("{0} pc", 1), note: M("Ground plate: sheet {0} thick (copper, brass or aluminium, or single-sided PCB laminate with the copper facing the patch)", { len: pcb.t }) });
+    rows.push({ item: M("Metal plate {0} × {1}", ...plate(patchBox)), qty: M("{0} pc", 1), note: M("Patch plate: the same sheet; cut it 1 mm long and trim to resonance") });
+    if (dirL) rows.push({ item: M("Metal plate {0} × {1}", ...plate(dirL.board)), qty: M("{0} pc", 1), note: M("Director plate: the same sheet, {0} above the patch", { len: dirL.z0 }) });
+    rows.push({ item: M("Nylon standoff {0} long, M3", { len: pcb.h }), qty: M("{0} pc", dirL ? 4 : 2), note: M("On the line x = 0 where the patch field is zero (the director has its own two)") });
+    rows.push({ item: M("Nylon screws and nuts M3"), qty: M("{0} pc", dirL ? 8 : 4) });
+    rows.push({ item: connector(d.f, true, isProbe(pcb)), qty: M("{0} pc", 1), note: M("Centre pin through the ground plate to the patch, {0} long above the ground", { len: pcb.h }) });
+    return rows;
+  }
   if (pcb) {
     for (const { pcb: bd } of boardsOf(pcb)) {
       const bb = bd.board, layers = new Set(copperBoxes(bd).map((q) => q.layer)).size;
@@ -333,6 +351,10 @@ export function bom(def: AntennaDef, d: Design, cuts: CutRow[]): BomRow[] {
     }
     if (pcb.coaxFeed) rows.push({ item: M("Semi-rigid coax RG402 (Ø3.6 mm) with an SMA plug, at least {0} long", { len: Math.max(0, ...(pcb.levels ?? []).map((l) => l.z0)) + pcb.h + 30e-3 }), qty: M("{0} pc", 1), note: M("Runs through the boards: the shield is soldered to them") });
     else rows.push({ item: connector(d.f, true, isProbe(pcb)), qty: M("{0} pc", 1) });
+    if (def.id === "pcbcollinear") {
+      rows.push({ item: M("Radome tube (PVC or polycarbonate), inside Ø {0} or more, {1} long", { len: Math.hypot(pcb.board.x1 - pcb.board.x0, pcb.h) + 4e-3 }, { len: pcb.board.y1 - pcb.board.y0 + 10e-3 }), qty: M("{0} pc", 1), note: M("Optional: weatherproofing; it lowers the resonance by 1–3 %") });
+      rows.push({ item: M("Ferrite bead or λ/4 choke on the cable"), qty: M("{0} pc", 1), note: M("Keeps current off the cable shield below the board") });
+    }
   } else {
     const byDia = new Map<string, { dia: number; n: number; L: number; coax: boolean }>();
     for (const c of cuts) {
@@ -386,9 +408,17 @@ export function bom(def: AntennaDef, d: Design, cuts: CutRow[]): BomRow[] {
 export function substrateNotes(def: AntennaDef, p: Params, d: Design): Msg[] {
   const P = PRINTED[def.id];
   if (!d.pcb || !P) return [];
+  if (def.id === "airpatch") {
+    // no laminate: the gap between the plates sets the resonance; 1 mm of error from the standoffs
+    const { q } = airSetup(p, d.f), f1 = airHeightShift(d.f, q.h, num(p, "trim", 0), q.h + 1e-3);
+    return [
+      ...(Number.isFinite(f1) ? [M("If the gap between the plates ends up 1 mm larger than designed, this layout resonates {0} lower ({1}).", { hz: d.f - f1 }, { pct: (100 * (d.f - f1)) / d.f })] : []),
+      M("The patch is in air: there is no laminate εr or loss to worry about. Keep the plates flat and parallel (a tilt acts like a height error) and the standoffs on the zero-field line."),
+    ];
+  }
   const er = d.pcb.er;
   const L0 = P.dim(d.pcb);
-  const fAt = (er2: number) => { try { const d2 = def.build({ ...p, er: er2 }); return d2.pcb ? (d.f * P.dim(d2.pcb)) / L0 : NaN; } catch { return NaN; } };
+  const fAt = (er2: number) => { try { const d2 = def.build({ ...p, sub: "custom", er: er2, h: d.pcb!.h, tanD: d.pcb!.tanD }); return d2.pcb ? (d.f * P.dim(d2.pcb)) / L0 : NaN; } catch { return NaN; } };
   const out: Msg[] = [];
   const f1 = fAt(er + 0.1);
   if (Number.isFinite(f1)) out.push(M("If the real εr is 0.1 higher, this layout resonates {0} lower ({1}).", { hz: d.f - f1 }, { pct: (100 * (d.f - f1)) / d.f }));
@@ -409,7 +439,7 @@ export function substrateNotes(def: AntennaDef, p: Params, d: Design): Msg[] {
 // ---------------------------------------------------------------- build steps
 
 /** What the cut list and bill of materials say, so the generic steps only mention what applies. */
-export interface StepsCtx { loop?: boolean; cutLong?: boolean; match?: boolean; wind?: number }
+export interface StepsCtx { air?: boolean; loop?: boolean; cutLong?: boolean; match?: boolean; wind?: number }
 
 export function steps(d: Design, hasBoom: boolean, tunable: boolean, ctx: StepsCtx = {}): Msg[] {
   const s: Msg[] = [];
@@ -418,6 +448,13 @@ export function steps(d: Design, hasBoom: boolean, tunable: boolean, ctx: StepsC
     s.push(M("Solder the connector at the feed gap, centre pin to one side and shield to the other, and keep the joint short."));
     s.push(M("Solder the series capacitor Cs in the top gap and the shunt capacitor Cp across the feed, with the values of the Matching components table (C0G/NP0, short leads). For tuning, solder a trimmer capacitor in parallel with Cs."));
     s.push(M("Set the Cs trimmer for the best match, then replace it with a fixed capacitor of the value you measured (Cp sets the 50 Ω match)."));
+  } else if (ctx.air && d.pcb) {
+    const dir = !!d.pcb.levels?.length;
+    s.push(M("Cut the ground plate and the patch plate from the sheet with the sizes of the bill of materials (the 1:1 template or the DXF layers help), the patch 1 mm long. File the edges straight and square."));
+    s.push(M("Drill the probe hole in both plates and the standoff holes on the line x = 0, at the distances of the dimensions table. The hole in the ground plate is the clearance for the jack's insulator."));
+    s.push(M("Fit the SMA panel jack under the ground plate so that its centre pin stands up through the hole, and cut the pin to the height of the patch."));
+    s.push(M("Mount the patch plate on the nylon standoffs, parallel to the ground (the standoff length is the height), and solder the centre pin to the patch at the probe hole."));
+    if (dir) s.push(M("Fit the director plate on its own standoffs at the listed spacing above the patch, centred on it, with its edges parallel."));
   } else if (d.pcb) {
     s.push(M("Order the board from the Gerber files, or etch it at home with the 1:1 template (for toner transfer use the Mirrored option: the top layer prints mirrored and the bottom layer as seen through the board from the top, each toner side against its copper)."));
     if (d.pcb.levels?.length) s.push(M("Stack the boards on the coax at the listed spacings (align the drill holes and keep the spacing within ±0.1 mm, e.g. with spacers cut to the listed height) and solder them in place."));
@@ -481,7 +518,7 @@ export function buildPack(def: AntennaDef, p: Params, d = def.build(p)): BuildPa
   const D = def.id === "spring" ? d.dims.find((x) => x.key === "D")?.value : undefined;
   const wd = 2 * (d.wires.find((w) => w.group === "driven")?.r ?? 0), core = D != null ? D - wd - 0.0003 : Infinity;
   const wind = D == null ? undefined : wd > 0.003 ? D - wd : core < 0.005 ? core : undefined;
-  return { bom: bom(def, d, cuts), cuts, tune: t.rows, tuneNote: t.note, substrate: substrateNotes(def, p, d), steps: steps(d, hasBoom, t.rows.length > 0, { loop: def.id === "pcbloop", cutLong: cuts.some((c) => c.cut > c.length + 1e-6), match: !!feedMatch(def, d), wind }), hasBoom };
+  return { bom: bom(def, d, cuts), cuts, tune: t.rows, tuneNote: t.note, substrate: substrateNotes(def, p, d), steps: steps(d, hasBoom, t.rows.length > 0, { air: def.id === "airpatch", loop: def.id === "pcbloop", cutLong: cuts.some((c) => c.cut > c.length + 1e-6), match: !!feedMatch(def, d), wind }), hasBoom };
 }
 
 // ---------------------------------------------------------------- measured vs model
@@ -523,6 +560,7 @@ export function advise(def: AntennaDef, p: Params, tune: TuneRow[], z: ZPoint[],
 /** Every English message this module can emit (i18n coverage test). */
 export const BUILD_STRINGS = [
   ...Object.values(NOT_TRIMMED), ...Object.values(PRINTED).flatMap((x) => [x.what, x.how]),
+  "Radome tube (PVC or polycarbonate), inside Ø {0} or more, {1} long", "Optional: weatherproofing; it lowers the resonance by 1–3 %", "Ferrite bead or λ/4 choke on the cable", "Keeps current off the cable shield below the board",
   "Band element", "Folded dipole", "Move each end of the folded dipole in by {0}", "Disc rod", "Cone rod", "Top whip",
   "Wind it on a former; see the helix dimensions", "Wind the coil on a drill bit or bolt of {0}.", "PCB with the loop trace ({0} × {1} loop)", "Reflector loop", "Driven loop", "Radiator", "Driven element", "Director", "Reflector", "Parasitic element", "Radial",
   "Matching section or stub", "Wire", "Boom or support", "Helix wire", "Leaf wire", "Semi-rigid coax RG402 (Ø3.6 mm) with an SMA plug, at least {0} long", "Runs through the boards: the shield is soldered to them", "Stack the boards on the coax at the listed spacings (align the drill holes and keep the spacing within ±0.1 mm, e.g. with spacers cut to the listed height) and solder them in place.", "Spring wire (lead + coil, straightened)", "Coax section (cut braid to braid)",
@@ -535,6 +573,10 @@ export const BUILD_STRINGS = [
   "PCB {0} × {1}, {2} thick, εr {3}", "{0} pc", "Copper on both sides", "Copper on the top side",
   "Coax for the sections (velocity factor as set)", "{0} pieces, {1} in total", "Wire or tube Ø{0}", "Add a little for bends and joints",
   "Boom or support tube Ø{0}", "{0} pc, {1}", "Element mounts (insulators or boom clamps)", "Metal disc Ø{0}", "Metal plate {0} × {1}",
+  "Ground plate: sheet {0} thick (copper, brass or aluminium, or single-sided PCB laminate with the copper facing the patch)", "Patch plate: the same sheet; cut it 1 mm long and trim to resonance", "Director plate: the same sheet, {0} above the patch",
+  "Nylon standoff {0} long, M3", "On the line x = 0 where the patch field is zero (the director has its own two)", "Nylon screws and nuts M3", "Centre pin through the ground plate to the patch, {0} long above the ground",
+  "If the gap between the plates ends up 1 mm larger than designed, this layout resonates {0} lower ({1}).", "The patch is in air: there is no laminate εr or loss to worry about. Keep the plates flat and parallel (a tilt acts like a height error) and the standoffs on the zero-field line.",
+  "Cut the ground plate and the patch plate from the sheet with the sizes of the bill of materials (the 1:1 template or the DXF layers help), the patch 1 mm long. File the edges straight and square.", "Drill the probe hole in both plates and the standoff holes on the line x = 0, at the distances of the dimensions table. The hole in the ground plate is the clearance for the jack's insulator.", "Fit the SMA panel jack under the ground plate so that its centre pin stands up through the hole, and cut the pin to the height of the patch.", "Mount the patch plate on the nylon standoffs, parallel to the ground (the standoff length is the height), and solder the centre pin to the patch at the probe hole.", "Fit the director plate on its own standoffs at the listed spacing above the patch, centred on it, with its edges parallel.",
   "Capacitor {0}, C0G/NP0", "Trimmer capacitor in parallel with Cs (optional, for tuning)",
   "If the real εr is 0.1 higher, this layout resonates {0} lower ({1}).",
   "FR-4 εr varies from about 4.2 to 4.7 between suppliers and with frequency: this layout would resonate between {0} and {1}. Ask the fab for εr at your frequency, or tune after the first board.",

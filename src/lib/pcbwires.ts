@@ -143,7 +143,7 @@ export function pcbStandIn(d: Design): { design: Design; fs: number } | null {
       const P: Vec3 = [c.wire.a[0], c.wire.a[1], s.z];
       if (P[0] < s.box.x0 - eps || P[0] > s.box.x1 + eps || P[1] < s.box.y0 - eps || P[1] > s.box.y1 + eps || !onShape(s, P[0], P[1])) continue;
       const qc = attach([c.wire], P), qs = attach(s.wires, P);
-      if (qc && qs && qs.d <= Math.max(c.b.x1 - c.b.x0, c.b.y1 - c.b.y0) * 2) link(qc.q, qs.q, Math.min(qc.r, qs.r));
+      if (qc && qs && qs.d <= Math.max(c.b.x1 - c.b.x0, c.b.y1 - c.b.y0, smax / 2) * 2) link(qc.q, qs.q, Math.min(qc.r, qs.r));
     }
 
   // feed wire across the port, each end joined to the nearest copper (or shield) at its height
@@ -158,9 +158,11 @@ export function pcbStandIn(d: Design): { design: Design; fs: number } | null {
   const ends: Vec3[] = [];
   for (const e of [fa, fb]) {
     const zp = planes.reduce((a, b) => (Math.abs(b - e[2]) < Math.abs(a - e[2]) ? b : a), planes[0]);
-    const ws = [...shapes.filter((s) => s.z === zp).flatMap((s) => s.wires), ...columns.filter((cl) => Math.abs(cl.wire.b[2] - e[2]) < 1e-9).map((cl) => cl.wire)];
+    // a port across a coplanar gap: each end belongs to the shape whose outline it sits on (the nearest centre line may be the other side's)
+    const on = dir === "z" ? [] : shapes.filter((s) => s.z === zp && e[0] >= s.box.x0 - eps && e[0] <= s.box.x1 + eps && e[1] >= s.box.y0 - eps && e[1] <= s.box.y1 + eps && onShape(s, e[0], e[1]));
+    const ws = [...(on.length ? on : shapes.filter((s) => s.z === zp)).flatMap((s) => s.wires), ...columns.filter((cl) => Math.abs(cl.wire.b[2] - e[2]) < 1e-9).map((cl) => cl.wire)];
     const q = attach(ws, e);
-    if (!q || q.d > 2 * Math.max(portW, dist(fa, fb))) return null;
+    if (!q || (!on.length && q.d > 2 * Math.max(portW, dist(fa, fb)))) return null;
     ends.push(q.q);
   }
   const feed: Wire = { a: ends[0], b: ends[1], r: traceRadius(portW), group: "feed" };

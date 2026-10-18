@@ -83,6 +83,10 @@ export interface Design {
   feed?: Feed;
   /** Printed antennas: board, copper and feed port (drawing plates are derived from it; openEMS export). */
   pcb?: import("./pcb").Pcb;
+  /** Circularly polarised designs: the hand the design radiates (IEEE: RHCP rotates clockwise seen along the direction of propagation). */
+  sense?: "rhcp" | "lhcp";
+  /** Printed patch arrays: one entry per element (centre, rotation about z in rad, phase lag of its feed in rad at f, half sizes of its bounding box). */
+  elements?: { x: number; y: number; psi: number; lag: number; hx: number; hy: number }[];
   /** Sheet-metal parts with their flat patterns (solid cones); the 1:1 template draws them. */
   sheets?: Sheet[];
   /** Ready-made cut list for a wire cage, whose frames and hoops share every node so pieces() cannot chain them;

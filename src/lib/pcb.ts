@@ -166,3 +166,19 @@ export const PRINTED_TRIM = { key: "trim", label: "Length trim (%)", kind: "numb
 
 /** Probe feed: a vertical port of zero cross-section inside the board (needs a drilled hole); otherwise an edge or gap port. */
 export const isProbe = (p: Pcb) => !p.coaxFeed && p.port.dir === "z" && p.port.start[0] === p.port.stop[0] && p.port.start[1] === p.port.stop[1];
+
+/** Bounding boxes of the groups of touching shapes of one layer (the pieces of one patch round an inset notch), in input order of their first piece. */
+export function clusterBoxes(bs: PcbRect[], eps = 1e-9): PcbRect[] {
+  const g = bs.map((_, i) => i);
+  const root = (i: number): number => (g[i] === i ? i : (g[i] = root(g[i])));
+  for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) {
+    const a = bs[i], b = bs[j];
+    if (a.layer === b.layer && a.x0 <= b.x1 + eps && b.x0 <= a.x1 + eps && a.y0 <= b.y1 + eps && b.y0 <= a.y1 + eps) g[root(j)] = root(i);
+  }
+  const out = new Map<number, PcbRect>();
+  bs.forEach((q, i) => {
+    const k = root(i), o = out.get(k);
+    out.set(k, o ? { ...o, x0: Math.min(o.x0, q.x0), y0: Math.min(o.y0, q.y0), x1: Math.max(o.x1, q.x1), y1: Math.max(o.y1, q.y1) } : { ...q });
+  });
+  return [...out.values()];
+}

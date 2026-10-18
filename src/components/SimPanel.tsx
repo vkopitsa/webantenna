@@ -72,6 +72,7 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
 
   const win = bandIdx < bands.length && bands.length > 1 ? (() => { const [a, b] = bands[bandIdx]; const m = 0.03 * (a + b) / 2; return [a - m, b + m] as const; })() : null;
   const clip = (z: ZPoint[]) => (win ? z.filter((p) => p.f >= win[0] && p.f <= win[1]) : z);
+  const clip2 = <T extends { f: number }>(a: T[]) => (win ? a.filter((p) => p.f >= win[0] && p.f <= win[1]) : a);
   const curves = useMemo(() => {
     const out: { name: string; cls: string; z: ZPoint[]; breaks?: number[] }[] = [];
     // separate band sweeps: lift the pen between them instead of drawing a line over frequencies never computed
@@ -84,6 +85,7 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
   const span = win ?? (bands.length ? [Math.min(...bands.map((b) => b[0])), Math.max(...bands.map((b) => b[1]))] as const : undefined);
   const ser = (fn: (p: ZPoint) => number, raw?: (p: ZPoint) => number): Series[] => curves.map((c) => ({ name: c.name, cls: c.cls, f: c.z.map((p) => p.f), values: c.z.map(fn), raw: raw && c.z.map(raw), breaks: c.breaks }));
   const zMain = curves[0];
+  const arSeries: Series[] = r?.ar && !fdOut ? [{ name: t("Axial ratio (dB)"), cls: "s1", f: clip2(r.ar).map((p) => p.f), values: clip2(r.ar).map((p) => Math.min(p.dB, 20)), raw: clip2(r.ar).map((p) => p.dB) }] : [];
 
   const onFile = async (file: File) => {
     setImpErr(null);
@@ -143,7 +145,7 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
             <button className="small primary" onClick={() => runFd("run")}>{t("Run FDTD")}</button>
             {"trim" in params && <button className="small" onClick={() => runFd("tune")} title={t("Run, rescale the resonant length onto the band centre, run again")}>{t("Tune to band")}</button>}
           </>}
-          {fdOut && <span className="muted small">{fdOut.engine === "gpu" ? "WebGPU" : "CPU"} · {(fdOut.cells / 1e3).toFixed(0)} k {t("cells")} · {fdOut.steps} {t("steps")} · {(fdOut.ms / 1000).toFixed(1)} s{fdOut.fRes ? ` · ${t("resonance")} ${fmtHz(fdOut.fRes, 3)}` : ""}</span>}
+          {fdOut && <span className="muted small">{fdOut.engine === "gpu" ? "WebGPU" : "CPU"} · {(fdOut.cells / 1e3).toFixed(0)} k {t("cells")} · {fdOut.steps} {t("steps")} · {(fdOut.ms / 1000).toFixed(1)} s{fdOut.fRes ? ` · ${fdOut.edge ? t("−10 dB lower edge") : t("resonance")} ${fmtHz(fdOut.fRes, 3)}` : ""}</span>}
           {fdtd.st.status === "error" && <span className="err-text small">{fdtd.st.error}</span>}
         </div>
       )}
@@ -157,6 +159,9 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
               <span>{t("Max gain")}</span><span><b>{pat.max.dbi.toFixed(2)} dBi</b> · θ {pat.max.theta}°, φ {pat.max.phi}° · {fmtHz(pat.f, 3)}</span>
               <span>{t("Front-to-back")}</span><span>{(pat.max.dbi - pat.back).toFixed(1)} dB</span>
               <span>{t("Beamwidth (−3 dB)")}</span><span>{Number.isFinite(pat.hpbw) ? `${pat.hpbw.toFixed(0)}°` : "—"}</span>
+            </>}
+            {r?.ar && !fdOut && r.sense && <>
+              <span>{t("Polarisation")}</span><span><b>{t(r.sense === "lhcp" ? "LHCP (left hand)" : "RHCP (right hand)")}</b> · {t("Axial ratio {0} dB at the design frequency; AR < 3 dB over {1}", (r.arF0 ?? NaN).toFixed(2), r.arBw ? fmtHz(r.arBw, 3) : "—")}</span>
             </>}
             {pat && !Number.isFinite(pat.max.theta) && <><span>{t("Directivity (openEMS)")}</span><span><b>{pat.max.dbi.toFixed(2)} dBi</b></span></>}
             {summary.map((s, i) => <span key={i} className="kv-pair">
@@ -204,6 +209,7 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
             { name: t("Re Zin"), cls: "s1", f: zMain.z.map((p) => p.f), values: zMain.z.map((p) => p.r), breaks: zMain.breaks },
             { name: t("Im Zin"), cls: "s2", f: zMain.z.map((p) => p.f), values: zMain.z.map((p) => p.x), breaks: zMain.breaks }]} cursor={cursor} />
           <FreqChart title="SWR" unit="" bands={bands} span={span} yMin={1} refLine={2} digits={2} series={ser((p) => Math.min(s11(p, z0).swr, 20), (p) => s11(p, z0).swr)} cursor={cursor} />
+          {arSeries.length > 0 && <FreqChart title="Axial ratio" unit="dB" bands={bands} span={span} yMin={0} refLine={3} series={arSeries} cursor={cursor} />}
           <SmithChart z={zMain.z} z0={z0} bands={bands} breaks={zMain.breaks} overlay={curves[1] ? { name: curves[1].name, z: curves[1].z } : undefined} cursor={cursor} />
           <CursorReadout curves={curves} z0={z0} cursor={cursor} pattern={pat} />
         </>}
