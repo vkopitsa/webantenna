@@ -232,7 +232,7 @@ describe("corner jigs", () => {
 describe("coil mandrel", () => {
   /** Design point → mandrel coordinates (axis on z, handle from z = 0). */
   const local = (g: ReturnType<typeof springGeometry>, q: [number, number, number]): [number, number, number] =>
-    [q[0] * 1000 - g.c[0], q[1] * 1000 - g.c[1], q[2] * 1000 - g.z0 + MANDREL_HANDLE];
+    [q[0] * 1000 - g.c[0], q[1] * 1000 - g.c[1], q[2] * 1000 - g.z0 + g.zs];
   const restack = (segs: Manifold[], H: number) => { const zs = pieceBottoms(H); return M.Manifold.union(segs.map((s, i) => s.translate([0, 0, segs.length > 1 ? zs[i] : 0]))); };
   const area = (m: Manifold, z: number) => m.slice(z).area();
 
@@ -246,7 +246,7 @@ describe("coil mandrel", () => {
     expect(g.hand).toBe(1);
     expect(g.n * g.S).toBeCloseTo(g.H, 6);
   });
-  it("spring defaults: plain mandrel (close-wound), shoulder at the coil length", () => {
+  it("spring defaults: plain mandrel (close-wound) between a lower ring and a shoulder H + d apart", () => {
     const { d } = setup("spring");
     const ps = coilParts(d), g = springGeometry(d);
     expect(ps.map((s) => s.id)).toEqual(["coil-mandrel"]);
@@ -254,13 +254,23 @@ describe("coil mandrel", () => {
     expect(ps[0].howTo.map((m) => m.s)).toEqual(BEND_HOWTO.mandrelPlain);
     const segs = ps[0].build(M);
     expect(segs).toHaveLength(1);
-    const core = 2 * g.R - g.wireD - CLEAR, z = MANDREL_HANDLE + g.H;
-    expect(area(segs[0], z - 0.2)).toBeCloseTo(Math.PI * (core / 2) ** 2, 0);
-    expect(area(segs[0], z + 0.2)).toBeGreaterThan(Math.PI * ((core + 2) / 2) ** 2);
-    // the coil is clear of the core everywhere (the last turn stops against the shoulder: its top half wire is left out)
-    const pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b)).filter((q) => q[2] < z - g.wireD / 2);
-    expect(pts.length).toBeGreaterThan(200);
+    // find the ring's top face and the shoulder's lower face from slices of the part (0.05 mm steps above the handle)
+    const core = 2 * g.R - g.wireD - CLEAR, disc = Math.PI * (core / 2) ** 2, wide = (z: number) => area(segs[0], z) > disc * 1.2;
+    let z = MANDREL_HANDLE + 0.025;
+    expect(wide(z)).toBe(true);
+    while (wide(z)) z += 0.05;
+    const ringTop = z;
+    while (!wide(z)) z += 0.05;
+    const shoulder = z;
+    expect(area(segs[0], ringTop + 0.2)).toBeCloseTo(disc, 0);
+    // the stretched coil: first turn on the ring, last against the shoulder, centre to centre = H
+    expect(shoulder - ringTop - g.wireD).toBeGreaterThan(g.H - 0.2);
+    expect(shoulder - ringTop - g.wireD).toBeLessThan(g.H + 0.2);
+    // every design coil point is clear of the core, ring and shoulder, and the straight lead passes the ring's slot
+    const pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b));
     for (const q of pts) expect(inside(segs[0], ball(M, q, g.wireD)), `${q}`).toBeLessThan(1e-3);
+    const [x0, y0] = local(g, d.wires[0].b);   // wire 0: the lead, straight down from the first turn
+    for (const zl of [MANDREL_HANDLE - 1, MANDREL_HANDLE + 1, g.zs - g.wireD]) expect(inside(segs[0], ball(M, [x0, y0, zl], g.wireD)), `lead ${zl}`).toBeLessThan(1e-3);
     expect(buildPart(M, ps[0], "t").ok).toBe(true);
   });
   it("open-pitch spring: grooved mandrel holds every design coil point", () => {
@@ -282,10 +292,13 @@ describe("coil mandrel", () => {
     expect(coilParts(d)).toEqual([]);
     const def = ANTENNA_BY_ID.spring, p = { ...def.defaults, D: 0.003 };
     const st = buildPack(def, p, def.build(p)).steps;
-    const w = st.find((m) => m.s === "Wind it on a drill bit or bolt of {0}")!;
+    const W = "Wind the coil on a drill bit or bolt of {0}.", w = st.find((m) => m.s === W)!;
     expect((w.a![0] as { len: number }).len).toBeCloseTo(0.003 - 0.0008 - 0.0003, 9);
-    expect(en(w)).toBe("Wind it on a drill bit or bolt of 1.90 mm");
-    expect(buildPack(def, def.defaults).steps.some((m) => m.s === "Wind it on a drill bit or bolt of {0}")).toBe(false);
+    expect(en(w)).toBe("Wind the coil on a drill bit or bolt of 1.90 mm.");
+    expect(buildPack(def, def.defaults).steps.some((m) => m.s === W)).toBe(false);
+    // wire over 3 mm: no mandrel either, so the step is there too
+    const q = { ...def.defaults, d: 0.004, pitch: 0.006, D: 0.012 }, t = buildPack(def, q, def.build(q)).steps.find((m) => m.s === W)!;
+    expect((t.a![0] as { len: number }).len).toBeCloseTo(0.012 - 0.004 - 0.0003, 9);
   });
   it("a spring at the turn cap is stacked: several pieces, each within the bed", () => {
     const { d } = setup("spring", { bands: "27e6-27.5e6", D: 0.02, pitch: 0.005, d: 0.0015 });

@@ -48,9 +48,10 @@ export const BEND_HOWTO: { plate: string[]; corner: string[]; mandrel: string[];
   mandrelPlain: [
     "Plain mandrel (the turns are too close together for a groove): print it standing on the handle; it needs no supports.",
     "If it comes in several pieces, glue each spigot into the piece above; the flat on the spigot keeps them in line.",
-    "Hold the straight lead along the handle and wind the turns side by side from the top of the handle up, keeping the wire tight.",
+    "Pass the straight lead down through the slot in the lower ring and seat the first turn on the ring.",
+    "Wind the turns side by side up the core, keeping the wire tight.",
     "Stretch the coil evenly until the last turn touches the shoulder and hook the end into the slot in the shoulder.",
-    "Cut the end at the slot and slide the coil off the mandrel.",
+    "Cut the end at the slot, cut the shoulder off with side cutters and slide the coil off the top.",
   ],
 };
 
@@ -242,7 +243,7 @@ const KEY_H = 8;                    // spigot height between stacked pieces
 
 /** Spring coil in mm from the model: the driven wires after the straight lead; axis = circumcentre of the first three coil
  *  points (c, xy), turns by unwrapped atan2 round it (as helixGeometry); a0/a1 = start/end angles (rad); H = coil length,
- *  z0 = coil start; L = mandrel length (handle + coil + cap). */
+ *  z0 = coil start; zs = coil start on the mandrel; L = mandrel length (handle, lower ring, coil, cap or shoulder). */
 export function springGeometry(d: Design) {
   const coil = d.wires.filter((w) => w.group === "driven" && !w.drawOnly && !w.necOnly && Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) > 1e-9);
   const pts = [coil[0].a, ...coil.map((w) => w.b)].map((p: Vec3): V3 => [mm(p[0]), mm(p[1]), mm(p[2])]);
@@ -255,13 +256,15 @@ export function springGeometry(d: Design) {
   const R = pts.reduce((s, p) => s + Math.hypot(p[0] - c[0], p[1] - c[1]), 0) / pts.length, wireD = mm(2 * coil[0].r);
   const n = Math.abs(turn) / (2 * Math.PI), hand = (turn > 0 ? 1 : -1) as 1 | -1, z0 = pts[0][2], H = pts[pts.length - 1][2] - z0, S = H / n;
   const grooved = S - wireD - CLEAR >= RIDGE;
-  return { R, wireD, S, n, hand, H, c, z0, a0: ang(pts[0]), a1: ang(pts[pts.length - 1]), grooved, L: MANDREL_HANDLE + H + (grooved ? (wireD + CLEAR) / 2 : 0) + CAP };
+  // zs = coil start on the mandrel: the groove starts at the handle top; a plain coil's first turn sits on the lower ring
+  const zs = grooved ? MANDREL_HANDLE : MANDREL_HANDLE + CAP + wireD / 2;
+  return { R, wireD, S, n, hand, H, c, z0, zs, a0: ang(pts[0]), a1: ang(pts[pts.length - 1]), grooved, L: zs + H + (grooved ? wireD + CLEAR : wireD / 2) + CAP };
 }
 export type SpringGeometry = ReturnType<typeof springGeometry>;
 
-/** Upright mandrel, axis on z, handle from z = 0, coil from MANDREL_HANDLE to + H; anchor slot at the coil's top end. */
+/** Upright mandrel, axis on z, handle from z = 0, coil centre line from zs to zs + H; anchor slot at the coil's top end. */
 function mandrel(M: ManifoldToplevel, g: SpringGeometry): Manifold[] {
-  const c = g.wireD + CLEAR, rc = g.R - c / 2, zt = MANDREL_HANDLE + g.H, deg = 180 / Math.PI;
+  const c = g.wireD + CLEAR, rc = g.R - c / 2, zt = g.zs + g.H, deg = 180 / Math.PI;
   const cyl = (h: number, r: number, z: number) => M.Manifold.cylinder(h, r, r, sides(r)).translate([0, 0, z]);
   const cuts: Manifold[] = [];
   let body: Manifold;
@@ -269,7 +272,13 @@ function mandrel(M: ManifoldToplevel, g: SpringGeometry): Manifold[] {
     body = M.Manifold.union([cyl(MANDREL_HANDLE, rc, 0), cyl(g.L - MANDREL_HANDLE, g.R, MANDREL_HANDLE)]);
     // start one groove width low and turn it back, so the groove is at the coil's start angle at the handle top
     cuts.push(twistGroove(M, g.R, g.wireD, MANDREL_HANDLE - c, zt + c, g.S, g.hand).rotate([0, 0, g.a0 * deg - (g.hand * 360 * c) / g.S]));
-  } else body = M.Manifold.union([cyl(zt, rc, 0), cyl(CAP, rc + 1.5, zt)]);   // shoulder: the stretched coil stops against it
+  } else {
+    // lower ring under the first turn (slot for the straight lead) and the shoulder the stretched coil's last turn stops
+    // against: faces H + d apart, so the turns' centres span H
+    const zsh = zt + g.wireD / 2;
+    body = M.Manifold.union([cyl(g.L, rc, 0), cyl(CAP, rc + 1.5, MANDREL_HANDLE), cyl(CAP, rc + 1.5, zsh)]);
+    cuts.push(box(M, [rc, -c / 2, MANDREL_HANDLE - 1], [Math.max(rc + 2.5, g.R + c), c / 2, MANDREL_HANDLE + CAP + 1]).rotate([0, 0, g.a0 * deg]));
+  }
   // anchor slot: one wire wide, 1 mm deeper than the core, from the coil top through the top
   cuts.push(box(M, [rc - 1, -c / 2, zt], [(g.grooved ? g.R : rc + 1.5) + 1, c / 2, g.L + 1]).rotate([0, 0, g.a1 * deg]));
   const part = body.subtract(M.Manifold.union(cuts)), rk = rc - Math.min(WALL, rc / 2), f = 0.4 * rk;
