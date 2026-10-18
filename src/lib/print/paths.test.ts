@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { setup } from "./families/testkit";
-import { bendPaths } from "./paths";
+import { bendPaths, filleted, flatten, signature, type P2 } from "./paths";
+import { CLEAR } from "./rules";
 import { mm } from "./rules";
 
 describe("bendPaths", () => {
@@ -41,4 +42,59 @@ describe("bendPaths", () => {
     expect(P[0].pts).toHaveLength(4);
   });
   it("dipole: no bends", () => expect(bendPaths(setup("dipole").d)).toEqual([]));
+});
+
+const dist = (a: P2, b: P2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const segDist = (p: P2, a: P2, b: P2) => {
+  const l2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2, t = l2 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / l2)) : 0;
+  return dist(p, [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]);
+};
+
+describe("flatten / filleted / signature", () => {
+  it("quad loop flattens: 4 corners, each 90°, size ≈ side × side", () => {
+    const p = bendPaths(setup("quad").d)[0], f = flatten(p)!;
+    expect(f).not.toBeNull();
+    expect(f.corners).toEqual([0, 1, 2, 3]);
+    const side = Math.hypot(p.pts[1][0] - p.pts[0][0], p.pts[1][1] - p.pts[0][1], p.pts[1][2] - p.pts[0][2]);
+    expect(Math.max(...f.size)).toBeCloseTo(side, 3);
+    expect(Math.min(...f.size)).toBeCloseTo(side, 3);
+    expect(Math.min(...f.pts.flat())).toBeCloseTo(0, 6);
+  });
+  it("spring path is not planar", () => {
+    const P = bendPaths(setup("spring").d);
+    for (const p of P) expect(flatten(p)).toBeNull();
+  });
+  it("cloverleaf leaf: no corner inside the arc", () => {
+    const f = flatten(bendPaths(setup("cloverleaf").d)[0])!;
+    expect(f).not.toBeNull();
+    expect(f.corners.length).toBe(2);
+    expect(f.corners.every((c) => c > 0 && c < f.pts.length - 1)).toBe(true);
+    const n = f.pts.length - 1;
+    expect(f.corners.every((c) => c <= 2 || c >= n - 2)).toBe(true);
+  });
+  it("filleted: clear of pegs and close to the polyline", () => {
+    const f = flatten(bendPaths(setup("quad").d)[0])!, g = filleted(f), rp = Math.max(1.5, f.d), Rf = rp + (f.d + CLEAR) / 2;
+    expect(g.pegs).toHaveLength(4);
+    for (const q of g.path) for (const pg of g.pegs) expect(dist(q, pg.c)).toBeGreaterThanOrEqual(Rf - 0.01);
+    for (const pg of g.pegs) expect(pg.r).toBeCloseTo(rp, 6);
+    const n = f.pts.length;
+    for (const q of g.path) expect(Math.min(...f.pts.map((a, i) => segDist(q, a, f.pts[(i + 1) % n])))).toBeLessThanOrEqual(0.5 * f.d + Rf);
+  });
+  it("fillet clamp: short middle run gives no NaN and tangents inside the run", () => {
+    const f = { pts: [[0, 0], [30, 0], [30, 2], [60, 2]] as P2[], closed: false, d: 1.5, corners: [1, 2], size: [60, 2] as P2 };
+    const g = filleted(f);
+    expect(g.path.flat().every(Number.isFinite)).toBe(true);
+    // every path point in the middle zone stays between the two runs: x within [0,60], y within [0,2]
+    for (const q of g.path) { expect(q[0]).toBeGreaterThanOrEqual(-1e-9); expect(q[0]).toBeLessThanOrEqual(60 + 1e-9); expect(q[1]).toBeGreaterThanOrEqual(-1e-9); expect(q[1]).toBeLessThanOrEqual(2 + 1e-9); }
+  });
+  it("cloverleaf: leaves share one signature, either hand", () => {
+    const sig = (extra = {}) => bendPaths(setup("cloverleaf", extra).d).map((p) => signature(flatten(p)!));
+    const a = sig(), b = sig({ hand: "lhcp" });
+    expect(new Set([...a, ...b]).size).toBe(1);
+    expect(new Set(sig({ leaves: "4" })).size).toBe(1);
+  });
+  it("signature differs for different shapes", () => {
+    const [a, b] = bendPaths(setup("quad").d).map((p) => signature(flatten(p)!));
+    expect(a).not.toBe(b);
+  });
 });

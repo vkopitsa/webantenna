@@ -1,5 +1,5 @@
 import type { Design } from "../types";
-import { mm } from "./rules";
+import { CLEAR, mm } from "./rules";
 import type { V3 } from "./shapes";
 
 /** A wire centre line to bend, in mm: a chain of wires through nodes of degree 2. Closed paths do not repeat the start point. */
@@ -59,4 +59,90 @@ export function bendPaths(d: Design): BendPath[] {
     if (n >= 3 && bent) out.push({ pts, closed, d: 2 * w0.r * 1000, group: w0.group ?? "" });
   });
   return out;
+}
+
+export type P2 = [number, number];
+/** A planar bend path in 2D (mm, origin at the min corner, x along the longest segment); corners = vertices turning > CORNER°. */
+export interface Flat { pts: P2[]; closed: boolean; d: number; corners: number[]; size: P2 }
+/** Filleted centre line plus the pegs (inner side of each filleted corner) that hold it. */
+export interface Groove { path: P2[]; pegs: { c: P2; r: number }[] }
+
+const CORNER = 20;   // degrees
+const DEG = Math.PI / 180;
+const turn2 = (a: P2, b: P2, c: P2) => {
+  const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]];
+  return Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1]) / (Math.hypot(...u) * Math.hypot(...v) || 1)))) / DEG;
+};
+
+/** Project a path onto its best-fit plane (Newell normal; an open path's end points are projected); null when it leaves the plane by more than max(0.2, 0.1·d) mm or is a straight line. */
+export function flatten(p: BendPath): Flat | null {
+  const q = p.pts, n = q.length, nrm = [0, 0, 0], c = [0, 0, 0];
+  // the plane is fitted to the interior of an open path: its end points are feed leads and may sit off the plane (they are projected onto it)
+  const fit = !p.closed && n > 3 ? q.slice(1, -1) : q, m = fit.length;
+  for (let i = 0; i < m; i++) {
+    const a = fit[i], b = fit[(i + 1) % m];
+    nrm[0] += (a[1] - b[1]) * (a[2] + b[2]); nrm[1] += (a[2] - b[2]) * (a[0] + b[0]); nrm[2] += (a[0] - b[0]) * (a[1] + b[1]);
+    for (let k = 0; k < 3; k++) c[k] += a[k] / m;
+  }
+  const nl = Math.hypot(...nrm);
+  if (nl < 1e-9) return null;
+  const N = nrm.map((x) => x / nl), dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const off = q.map((a) => dot([a[0] - c[0], a[1] - c[1], a[2] - c[2]], N));
+  if (Math.max(...off.slice(fit === q ? 0 : 1, fit === q ? n : n - 1).map(Math.abs)) > Math.max(0.2, 0.1 * p.d)) return null;
+  const pr = q.map((a, i) => [a[0] - c[0] - N[0] * off[i], a[1] - c[1] - N[1] * off[i], a[2] - c[2] - N[2] * off[i]]);
+  let best = 0, ax = [1, 0, 0];   // u along the longest segment
+  for (let i = 0; i < (p.closed ? n : n - 1); i++) {
+    const j = (i + 1) % n, w = [pr[j][0] - pr[i][0], pr[j][1] - pr[i][1], pr[j][2] - pr[i][2]], l = Math.hypot(...w);
+    if (l > best) { best = l; ax = w.map((x) => x / l); }
+  }
+  if (best < 1e-6) return null;
+  const V = [N[1] * ax[2] - N[2] * ax[1], N[2] * ax[0] - N[0] * ax[2], N[0] * ax[1] - N[1] * ax[0]];
+  const xy = pr.map((a) => [dot(a, ax), dot(a, V)] as P2);
+  const x0 = Math.min(...xy.map((a) => a[0])), y0 = Math.min(...xy.map((a) => a[1]));
+  const pts = xy.map((a) => [a[0] - x0, a[1] - y0] as P2);
+  const corners: number[] = [];
+  for (let i = p.closed ? 0 : 1; i < (p.closed ? n : n - 1); i++) if (turn2(pts[(i + n - 1) % n], pts[i], pts[(i + 1) % n]) > CORNER) corners.push(i);
+  return { pts, closed: p.closed, d: p.d, corners, size: [Math.max(...pts.map((a) => a[0])), Math.max(...pts.map((a) => a[1]))] };
+}
+
+/** Replace each corner by an arc of centre-line radius Rf = rp + (d + CLEAR)/2 (tangent length clamped to 0.45 × the shorter neighbour run); pegs of radius rp inside. */
+export function filleted(f: Flat): Groove {
+  const rp = Math.max(1.5, f.d), Rf0 = rp + (f.d + CLEAR) / 2, n = f.pts.length, isC = new Set(f.corners);
+  const path: P2[] = [], pegs: Groove["pegs"] = [];
+  f.pts.forEach((P, i) => {
+    if (!isC.has(i)) { path.push(P); return; }
+    const A = f.pts[(i + n - 1) % n], B = f.pts[(i + 1) % n], la = Math.hypot(P[0] - A[0], P[1] - A[1]), lb = Math.hypot(B[0] - P[0], B[1] - P[1]);
+    const u1 = [(P[0] - A[0]) / la, (P[1] - A[1]) / la], u2 = [(B[0] - P[0]) / lb, (B[1] - P[1]) / lb];
+    const th = turn2(A, P, B) * DEG, tn = Math.tan(th / 2);
+    const t = Math.min(Rf0 * tn, 0.45 * Math.min(la, lb)), Rf = t / tn;
+    const bx = u2[0] - u1[0], by = u2[1] - u1[1], bl = Math.hypot(bx, by) || 1, k = Rf / Math.cos(th / 2) / bl;
+    const C: P2 = [P[0] + bx * k, P[1] + by * k];
+    const a1 = Math.atan2(P[1] - u1[1] * t - C[1], P[0] - u1[0] * t - C[0]), a2 = Math.atan2(P[1] + u2[1] * t - C[1], P[0] + u2[0] * t - C[0]);
+    let da = a2 - a1;
+    while (da > Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    const m = Math.max(1, Math.ceil(Math.abs(da) / (10 * DEG)));
+    for (let s = 0; s <= m; s++) path.push([C[0] + Rf * Math.cos(a1 + da * s / m), C[1] + Rf * Math.sin(a1 + da * s / m)]);
+    if (Rf >= rp + f.d / 2) pegs.push({ c: C, r: rp });
+  });
+  return { path, pegs };
+}
+
+/** Equal for pieces equal up to rotation, mirror and (for closed paths) start point: segment lengths (0.1 mm) and |turn| (0.5°), minimum over reversal and rotation. */
+export function signature(f: Flat): string {
+  const seq = (q: P2[]) => {
+    const n = q.length, o: string[] = [];
+    for (let i = 0; i < n; i++) {
+      if (!f.closed && i === n - 1) break;
+      const b = q[(i + 1) % n], l = Math.round(Math.hypot(b[0] - q[i][0], b[1] - q[i][1]) * 10);
+      o.push(f.closed || i > 0 ? `${Math.round(turn2(q[(i + n - 1) % n], q[i], b) * 2)}:${l}` : `${l}`);
+    }
+    return o;
+  };
+  const vs: string[] = [];
+  for (const q of [f.pts, [...f.pts].reverse()]) {
+    const s = seq(q), r = f.closed ? s.length : 1;
+    for (let k = 0; k < r; k++) vs.push([...s.slice(k), ...s.slice(0, k)].join(","));
+  }
+  return vs.reduce((a, b) => (b < a ? b : a));
 }
