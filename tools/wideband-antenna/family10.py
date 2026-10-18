@@ -23,6 +23,7 @@ import os
 import subprocess
 import sys
 import numpy as np
+from wire_variant import nec_order
 import designs as D
 import family2 as F2
 
@@ -272,8 +273,14 @@ def build(p):
             t = HUB_R / nb[0]
             ring = (HUB_R, z_axis + t * (nb[1] - z_axis))
             path = [ring] + path[1:]
-        else:
-            path = path[1:]
+        else:                        # the neighbour (the washer edge) is inside the hub ring: cut the path where it
+            k = next((i for i in range(2, len(path)) if path[i][0] > HUB_R), None)    # crosses HUB_R, so the n
+            if k is None:            # frames meet on a ring of the hub radius (thick wires: a ring at the washer
+                path = path[1:]      # edge has chords shorter than the wire diameter, NEC rejects them)
+            else:
+                a, c = path[k - 1], path[k]
+                t = (HUB_R - a[0]) / (c[0] - a[0])
+                path = [(HUB_R, a[1] + t * (c[1] - a[1]))] + path[k:]
         hubs.append((z_axis, path[0]))
         return path
     cone = hub_cut(cone, g)
@@ -297,6 +304,12 @@ def build(p):
     for a in rest:
         for x, y in a[1:]:
             path.append((float(x), float(y), rim[2]))
+    if len(path) > 2 and 1.5e-3 <= path[-1][0] < HUB_R:      # an open lid whose hole is smaller than the hub ring:
+        k = max(i for i in range(len(path)) if path[i][0] >= HUB_R)   # end it on a ring of the hub radius (thick
+        if k < len(path) - 1:                                # wires: the frames would overlap further in)
+            a, c = path[k], path[k + 1]
+            t = (a[0] - HUB_R) / (a[0] - c[0])
+            path = path[:k + 1] + ([(HUB_R, a[1] + t * (c[1] - a[1]), rim[2])] if t > 1e-6 else [])
     if len(path) > 1:
         if path[-1][0] < 1.5e-3:
             axis_lid = path[-1][1]
@@ -502,12 +515,15 @@ def model(p, f, n=NCAGE, r=RWIRE, per=20, els=None, info=None, seg=None, nphi=No
     c = nec_context()
     G = c.get_geometry()
     wires = wire_list(b, n, r)
+    order = nec_order(wires)                  # short pieces next to thick wires go first (NEC rejects them after)
+    wires = [wires[i] for i in order]         # tags follow this order; frame0 stays in path order
     frame0 = []
     for tag, (kind, a, bb, rad) in enumerate(wires, 1):
         ns = 1 if kind == "feed" else max(1, int(math.ceil(math.dist(a, bb) / (seg or lam / per))))
         G.wire(tag, ns, *a, *bb, rad, 1, 1)
         if kind == "frame0":
-            frame0.append(tag)
+            frame0.append((order[tag - 1], tag))
+    frame0 = [t for _, t in sorted(frame0)]
     if cable > 0:
         ct = len(wires) + 1
         ncs = max(1, int(math.ceil(cable / cable_seg)))

@@ -10,6 +10,7 @@ from z = 0 to the pin gap (the coax end), 50 ohm."""
 import os, sys, json, math, importlib
 import numpy as np
 from PyNEC import nec_context
+from wire_variant import nec_order
 
 ELS = (15, 20, 25, 30, 35, 40, 45, 50)
 
@@ -53,7 +54,15 @@ def _hubbed(path, z_axis_ok=True):
                 else:
                     out[-1] = ring
             else:                                # the neighbour is itself inside the hub radius (the washer)
-                out = out[1:] if end == 0 else out[:-1]
+                seq = out if end == 0 else out[::-1]
+                k = next((i for i in range(2, len(seq)) if seq[i][0] > HUB_R), None)
+                if k is None:
+                    seq = seq[1:]
+                else:                            # cut where the path crosses HUB_R (thick wires: a ring at the
+                    a, c = seq[k - 1], seq[k]    # washer edge has chords shorter than the wire diameter)
+                    t = (HUB_R - a[0]) / (c[0] - a[0])
+                    seq = [(HUB_R, a[1] + t * (c[1] - a[1]))] + seq[k:]
+                out = seq if end == 0 else seq[::-1]
                 ring = out[0] if end == 0 else out[-1]
             hubs.append(((0.0, q[1]), ring))
     return out, hubs
@@ -70,17 +79,11 @@ def model(fam, p, f, n, r, rings=True, axis=True, per=20, hub=4, hoop=0.0, seg=N
     lam = 3e8 / f
     c = nec_context()
     G = c.get_geometry()
-    tag = [1]
-    frame0, wires = [], []
+    wires = []
     def wire(a, b, rad, kind="frame"):
-        L = math.dist(a, b)
-        ns = max(1, int(math.ceil(L / (seg or lam / per))))
-        tag[0] += 1
-        G.wire(tag[0], ns, *a, *b, rad, 1, 1)
         wires.append((kind, a, b, rad))
-        return tag[0]
     g = p["g"]
-    G.wire(1, feed_ns, 0, 0, 0, 0, 0, g, 0.46e-3, 1, 1)       # feed: the pin gap
+    feed = ("feed", (0, 0, 0), (0, 0, g), 0.46e-3)            # feed: the pin gap
     xyz = lambda q, t: (q[0] * math.cos(t), q[0] * math.sin(t), q[1])
     ang = [2 * math.pi * k / n for k in range(n)]
     hubs = []
@@ -95,9 +98,7 @@ def model(fam, p, f, n, r, rings=True, axis=True, per=20, hub=4, hoop=0.0, seg=N
             cut = fine
         for t in ang:
             for a, b in zip(cut, cut[1:]):
-                k = wire(xyz(a, t), xyz(b, t), r)
-                if t == 0:
-                    frame0.append((k, a, b))
+                wire(xyz(a, t), xyz(b, t), r, "frame0" if t == 0 else "frame")
         ring_r = [q for q in cut if q[0] >= 4e-3] if rings else []
         for q in ring_r + [hq for _, hq in h]:
             chord = 2 * q[0] * math.sin(math.pi / n)
@@ -108,6 +109,16 @@ def model(fam, p, f, n, r, rings=True, axis=True, per=20, hub=4, hoop=0.0, seg=N
             wire(xyz(axis_pt, 0), xyz(ring, ang[k]), min(r, 0.5e-3), "spoke")
     if axis and hot[-1][0] < 1e-9:
         wire((0, 0, g), (0, 0, hot[-1][1]), r, "axis")
+    order = nec_order([feed] + wires)            # short pieces next to thick wires go first (NEC rejects them after)
+    wires = [([feed] + wires)[i] for i in order][1:]
+    G.wire(1, feed_ns, *feed[1], *feed[2], feed[3], 1, 1)
+    frame0 = []
+    for tag, (kind, a, b, rad) in enumerate(wires, 2):
+        ns = max(1, int(math.ceil(math.dist(a, b) / (seg or lam / per))))
+        G.wire(tag, ns, *a, *b, rad, 1, 1)
+        if kind == "frame0":                     # frame 0 lies in the x-z plane: (rho, z) = (x, z); path order
+            frame0.append((order[tag - 1], tag, (a[0], a[2]), (b[0], b[2])))
+    frame0 = [q[1:] for q in sorted(frame0)]
     c.geometry_complete(0)
     c.ex_card(0, 1, feed_ns // 2 + 1, 0, 1.0, 0, 0, 0, 0, 0)
     c.fr_card(0, 1, f / 1e6, 0)
