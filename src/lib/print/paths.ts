@@ -44,7 +44,8 @@ export function bendPaths(d: Design): BendPath[] {
       if (!(closed && j === i)) pts.push(node.map(mm) as V3);
     }
     if (closed) {   // start at the feed end touching the loop
-      const f = pts.findIndex((p) => feedEnds.includes(key(p.map((c) => c / 1000))));
+      const ks = pts.map((p) => key(p.map((c) => c / 1000)));
+      const f = feedEnds.map((e) => ks.indexOf(e)).find((m) => m >= 0) ?? 0;   // feed.b first, then feed.a, else the first wire's a
       if (f > 0) pts.push(...pts.splice(0, f));
     }
     const ang = (a: V3, b: V3, c: V3) => {

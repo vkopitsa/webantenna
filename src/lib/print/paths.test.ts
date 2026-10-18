@@ -13,6 +13,14 @@ describe("bendPaths", () => {
     P[0].pts[0].forEach((c, i) => expect(c).toBeCloseTo(mm(u[i]), 3));
     expect(P[0].d).toBeCloseTo(1.5, 6);
   });
+  it("biquad: start is the feed's b end whatever the wire order", () => {
+    const { d } = setup("biquad"), u = d.wires.find((w) => w.group === "feed")!.b;
+    for (const wires of [[...d.wires].reverse(), [...d.wires.slice(3), ...d.wires.slice(0, 3)]]) {
+      const P = bendPaths({ ...d, wires });
+      expect(P).toHaveLength(1);
+      P[0].pts[0].forEach((c, i) => expect(c).toBeCloseTo(mm(u[i]), 3));
+    }
+  });
   it("quad: two closed paths of 4 points", () => {
     const P = bendPaths(setup("quad").d);
     expect(P.map((p) => [p.closed, p.pts.length])).toEqual([[true, 4], [true, 4]]);
