@@ -50,6 +50,8 @@ src/lib/                 NO DOM, NO React, NO i18n. Runs in Node (tests) and in 
   print/                 3D-printable parts (manifold-3d CSG, mm): rules.ts fixed geometry rules, shapes.ts blocks,
                          parts.ts PartSpec/buildPart (watertight, ≤ 180 mm), families/*.ts per antenna, stl.ts writer
                          families/former.ts (helix tube/frame, twisted groove, keyed stacking), spreader.ts, standoff.ts, spacer.ts
+  print/paths.ts         planar bent wires from Design.wires → ordered paths, groove outlines, corner signatures
+  print/families/bend.ts bend plates + corner jigs (quad, Moxon, biquad, Yagi, cloverleaf) and the spring's coil mandrel, from Design.wires
   print/shells/          one `shell` part per antenna: geometry.ts (envelope, style, exits), clamshell.ts, dome.ts, hood.ts (feedpoint hood), pcbbox.ts,
                          index.ts (shellFor)
   drawing.ts template.ts page model in mm → PDF (own writer, Helvetica, A4) and SVG; PCB, boom strip, wire and helix templates
