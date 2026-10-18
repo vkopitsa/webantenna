@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { setup } from "./families/testkit";
-import { bendPaths, filleted, flatten, signature, type P2 } from "./paths";
-import { CLEAR } from "./rules";
-import { mm } from "./rules";
+import { bendPaths, type BendPath, filleted, flatten, signature, type P2 } from "./paths";
+import { CLEAR, mm } from "./rules";
 
 describe("bendPaths", () => {
   it("biquad: one closed figure-8 of 8 points starting at U", () => {
@@ -84,8 +83,27 @@ describe("flatten / filleted / signature", () => {
     const f = { pts: [[0, 0], [30, 0], [30, 2], [60, 2]] as P2[], closed: false, d: 1.5, corners: [1, 2], size: [60, 2] as P2 };
     const g = filleted(f);
     expect(g.path.flat().every(Number.isFinite)).toBe(true);
-    // every path point in the middle zone stays between the two runs: x within [0,60], y within [0,2]
+    // middle run (30,0)-(30,2): the clamp is 0.45 × 2 = 0.9 mm, so both arcs start/end on it and the pegs are omitted (Rf 0.9 < rp + d/2)
+    expect(g.pegs).toHaveLength(0);
+    const has = (x: number, y: number) => g.path.some((q) => Math.hypot(q[0] - x, q[1] - y) < 1e-6);
+    expect(has(29.1, 0)).toBe(true); expect(has(30, 0.9)).toBe(true); expect(has(30, 1.1)).toBe(true); expect(has(30.9, 2)).toBe(true);
     for (const q of g.path) { expect(q[0]).toBeGreaterThanOrEqual(-1e-9); expect(q[0]).toBeLessThanOrEqual(60 + 1e-9); expect(q[1]).toBeGreaterThanOrEqual(-1e-9); expect(q[1]).toBeLessThanOrEqual(2 + 1e-9); }
+  });
+  it("open paths: a 4-point Z flattens; an end lifted 5 mm off the plane does not", () => {
+    const z = (h: number): BendPath => ({ pts: [[0, 0, 0], [30, 0, 0], [30, 20, 0], [60, 20, h]], closed: false, d: 1.5, group: "" });
+    const f = flatten(z(0))!;
+    expect(f).not.toBeNull();
+    expect(f.corners).toEqual([1, 2]);
+    expect(flatten(z(5))).toBeNull();
+    const u: BendPath = { pts: [[0, 20, 0], [0, 0, 0], [30, 0, 0], [30, 20, 0]], closed: false, d: 1.5, group: "" };
+    expect(flatten(u)!.corners).toEqual([1, 2]);
+    const five: BendPath = { pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [20, 10, 5]], closed: false, d: 1.5, group: "" };
+    expect(flatten(five)).toBeNull();   // free end 5 mm off the plane of the interior
+  });
+  it("signature includes d and the closed flag", () => {
+    const f = flatten(bendPaths(setup("quad").d)[0])!;
+    expect(signature({ ...f, d: f.d + 0.5 })).not.toBe(signature(f));
+    expect(signature({ ...f, closed: false })).not.toBe(signature(f));
   });
   it("cloverleaf: leaves share one signature, either hand", () => {
     const sig = (extra = {}) => bendPaths(setup("cloverleaf", extra).d).map((p) => signature(flatten(p)!));

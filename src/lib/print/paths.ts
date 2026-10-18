@@ -76,19 +76,32 @@ const turn2 = (a: P2, b: P2, c: P2) => {
 
 /** Project a path onto its best-fit plane (Newell normal; an open path's end points are projected); null when it leaves the plane by more than max(0.2, 0.1·d) mm or is a straight line. */
 export function flatten(p: BendPath): Flat | null {
-  const q = p.pts, n = q.length, nrm = [0, 0, 0], c = [0, 0, 0];
-  // the plane is fitted to the interior of an open path: its end points are feed leads and may sit off the plane (they are projected onto it)
-  const fit = !p.closed && n > 3 ? q.slice(1, -1) : q, m = fit.length;
-  for (let i = 0; i < m; i++) {
-    const a = fit[i], b = fit[(i + 1) % m];
-    nrm[0] += (a[1] - b[1]) * (a[2] + b[2]); nrm[1] += (a[2] - b[2]) * (a[0] + b[0]); nrm[2] += (a[0] - b[0]) * (a[1] + b[1]);
-    for (let k = 0; k < 3; k++) c[k] += a[k] / m;
-  }
-  const nl = Math.hypot(...nrm);
-  if (nl < 1e-9) return null;
-  const N = nrm.map((x) => x / nl), dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const q = p.pts, n = q.length, dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  // an open path's end points are feed leads and may sit off the plane (by ≤ max(1, d), projected onto it): fit the interior when it can fix a plane
+  const plane = (fit: V3[]) => {
+    const m = fit.length, nrm = [0, 0, 0], c = [0, 0, 0];
+    for (let i = 0; i < m; i++) {
+      const a = fit[i], b = fit[(i + 1) % m];
+      nrm[0] += (a[1] - b[1]) * (a[2] + b[2]); nrm[1] += (a[2] - b[2]) * (a[0] + b[0]); nrm[2] += (a[0] - b[0]) * (a[1] + b[1]);
+      for (let k = 0; k < 3; k++) c[k] += a[k] / m;
+    }
+    let nl = Math.hypot(...nrm);
+    if (nl < 1e-6) {   // Newell's sum vanishes for a Z-like shape: use the widest triple from the first point
+      nl = 0;
+      for (let i = 1; i < m; i++) for (let j = i + 1; j < m; j++) {
+        const u = [fit[i][0] - fit[0][0], fit[i][1] - fit[0][1], fit[i][2] - fit[0][2]], v = [fit[j][0] - fit[0][0], fit[j][1] - fit[0][1], fit[j][2] - fit[0][2]];
+        const w = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], l = Math.hypot(...w);
+        if (l > nl) { nl = l; nrm[0] = w[0]; nrm[1] = w[1]; nrm[2] = w[2]; }
+      }
+    }
+    return nl < 1e-6 ? null : { N: nrm.map((x) => x / nl), c };
+  };
+  const inner = !p.closed && n >= 5 ? plane(q.slice(1, -1)) : null, pl = inner ?? plane(q);
+  if (!pl) return null;
+  const { N, c } = pl;
   const off = q.map((a) => dot([a[0] - c[0], a[1] - c[1], a[2] - c[2]], N));
-  if (Math.max(...off.slice(fit === q ? 0 : 1, fit === q ? n : n - 1).map(Math.abs)) > Math.max(0.2, 0.1 * p.d)) return null;
+  const tol = Math.max(0.2, 0.1 * p.d), lead = inner ? Math.max(1, p.d) : tol;
+  if (off.some((o, i) => Math.abs(o) > (inner && (i === 0 || i === n - 1) ? lead : tol))) return null;
   const pr = q.map((a, i) => [a[0] - c[0] - N[0] * off[i], a[1] - c[1] - N[1] * off[i], a[2] - c[2] - N[2] * off[i]]);
   let best = 0, ax = [1, 0, 0];   // u along the longest segment
   for (let i = 0; i < (p.closed ? n : n - 1); i++) {
@@ -128,7 +141,7 @@ export function filleted(f: Flat): Groove {
   return { path, pegs };
 }
 
-/** Equal for pieces equal up to rotation, mirror and (for closed paths) start point: segment lengths (0.1 mm) and |turn| (0.5°), minimum over reversal and rotation. */
+/** Equal for pieces equal up to rotation, mirror and (for closed paths) start point (wire d and the closed flag included): segment lengths (0.1 mm) and |turn| (0.5°), minimum over reversal and rotation. */
 export function signature(f: Flat): string {
   const seq = (q: P2[]) => {
     const n = q.length, o: string[] = [];
@@ -144,5 +157,5 @@ export function signature(f: Flat): string {
     const s = seq(q), r = f.closed ? s.length : 1;
     for (let k = 0; k < r; k++) vs.push([...s.slice(k), ...s.slice(0, k)].join(","));
   }
-  return vs.reduce((a, b) => (b < a ? b : a));
+  return `${f.closed ? "c" : "o"}${Math.round(f.d * 100)}|${vs.reduce((a, b) => (b < a ? b : a))}`;
 }
