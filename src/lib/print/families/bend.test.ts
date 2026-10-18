@@ -246,7 +246,7 @@ describe("coil mandrel", () => {
     expect(g.hand).toBe(1);
     expect(g.n * g.S).toBeCloseTo(g.H, 6);
   });
-  it("spring defaults: plain mandrel (close-wound) between a lower ring and a shoulder H + d apart", () => {
+  it("spring defaults: plain mandrel (close-wound): lower ring, length notch H above the first turn, slides off the top", () => {
     const { d } = setup("spring");
     const ps = coilParts(d), g = springGeometry(d);
     expect(ps.map((s) => s.id)).toEqual(["coil-mandrel"]);
@@ -254,19 +254,26 @@ describe("coil mandrel", () => {
     expect(ps[0].howTo.map((m) => m.s)).toEqual(BEND_HOWTO.mandrelPlain);
     const segs = ps[0].build(M);
     expect(segs).toHaveLength(1);
-    // find the ring's top face and the shoulder's lower face from slices of the part (0.05 mm steps above the handle)
-    const core = 2 * g.R - g.wireD - CLEAR, disc = Math.PI * (core / 2) ** 2, wide = (z: number) => area(segs[0], z) > disc * 1.2;
+    // find the ring's top face and the notch from slices of the part (0.05 mm steps above the handle)
+    const core = 2 * g.R - g.wireD - CLEAR, disc = Math.PI * (core / 2) ** 2, at = (z: number) => area(segs[0], z);
     let z = MANDREL_HANDLE + 0.025;
-    expect(wide(z)).toBe(true);
-    while (wide(z)) z += 0.05;
+    expect(at(z)).toBeGreaterThan(disc * 1.2);
+    while (at(z) > disc * 1.2) z += 0.05;
     const ringTop = z;
-    while (!wide(z)) z += 0.05;
-    const shoulder = z;
-    expect(area(segs[0], ringTop + 0.2)).toBeCloseTo(disc, 0);
-    // the stretched coil: first turn on the ring, last against the shoulder, centre to centre = H
-    expect(shoulder - ringTop - g.wireD).toBeGreaterThan(g.H - 0.2);
-    expect(shoulder - ringTop - g.wireD).toBeLessThan(g.H + 0.2);
-    // every design coil point is clear of the core, ring and shoulder, and the straight lead passes the ring's slot
+    expect(at(ringTop + 0.2)).toBeCloseTo(disc, 0);
+    while (at(z) > disc * 0.9) z += 0.05;
+    const n0 = z;
+    while (at(z) < disc * 0.9) z += 0.05;
+    const notch = (n0 + z) / 2;
+    // the stretched coil: first turn on the ring, last in the notch, centre to centre = H
+    expect(notch - ringTop - g.wireD / 2).toBeGreaterThan(g.H - 0.2);
+    expect(notch - ringTop - g.wireD / 2).toBeLessThan(g.H + 0.2);
+    expect(z - n0).toBeCloseTo(g.wireD + CLEAR, 0);
+    // nothing above the ring is wider than the core: the coil slides off over the top
+    const bb = segs[0].trimByPlane([0, 0, 1], ringTop + 0.1).boundingBox();
+    for (const k of [0, 1]) { expect(bb.min[k]).toBeGreaterThan(-core / 2 - 1e-6); expect(bb.max[k]).toBeLessThan(core / 2 + 1e-6); }
+    expect(bb.max[2]).toBeGreaterThan(notch + 2.5);
+    // every design coil point is clear of the core, ring and notch edges, and the straight lead passes the ring's slot
     const pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b));
     for (const q of pts) expect(inside(segs[0], ball(M, q, g.wireD)), `${q}`).toBeLessThan(1e-3);
     const [x0, y0] = local(g, d.wires[0].b);   // wire 0: the lead, straight down from the first turn
