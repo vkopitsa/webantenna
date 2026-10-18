@@ -1,13 +1,15 @@
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
-import type { Design } from "../../types";
+import type { Design, Vec3 } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { bendPaths, filleted, flatten, signature, type BendPath, type Flat, type Groove, type P2 } from "../paths";
-import { CLEAR, MAX_SIZE } from "../rules";
-import { rod, type V3 } from "../shapes";
+import { CLEAR, MAX_SIZE, WALL, mm } from "../rules";
+import { box, dShape, rod, stack, twistGroove, type V3 } from "../shapes";
+import { sides } from "./former";
 
 // Bend jigs for planar bent wires (quad loops, biquad, cloverleaf leaves, folded dipoles): a plate with the piece's
 // groove, the same for every identical piece; a piece too big for a plate gets corner jigs instead (one per distinct
 // corner, or per group of corners close together). Geometry comes from the design's wires (print/paths.ts).
+// The spring gets a coil mandrel: grooved when the turns are far enough apart, else a plain core with a shoulder.
 
 export const BEND_STRINGS = [
   "Bend plate",
@@ -16,6 +18,9 @@ export const BEND_STRINGS = [
   "Bends {0} corner(s) of {1} wire by {2}° round the peg, so that every corner comes out the same.",
   "Bends {0} pair(s) of corners of {1} wire by {2}° each, {3} apart, in one go round the two pegs.",
   "Bends {0} group(s) of {1} corners of {2} wire in one go round the pegs, with the spacing between them built in.",
+  "Coil mandrel",
+  "Grooved mandrel: winds {0} wire into a coil of {1} inside diameter, {2} per turn, {3} turns.",
+  "Plain mandrel of {0} with a shoulder, for {1} wire: wind {2} turns side by side, then stretch the coil to the shoulder ({3} coil length).",
 ];
 
 /** How-to steps per part, in order. */
@@ -34,8 +39,19 @@ export const BEND_HOWTO: { plate: string[]; corner: string[]; mandrel: string[];
     "On a jig with two or more pegs, lay all the corners of the group in at once and bend them in one go.",
     "Repeat for every corner listed, with the same jig.",
   ],
-  mandrel: [],
-  mandrelPlain: [],
+  mandrel: [
+    "Grooved mandrel (the turns are far enough apart for a groove): print it standing on the handle; it needs no supports.",
+    "If it comes in several pieces, glue each spigot into the piece above; the flat on the spigot lines up the groove.",
+    "Hold the straight lead along the handle, lay the wire into the start of the groove at the top of the handle and wind it tightly along the groove to the top.",
+    "Hook the end into the slot at the top, cut it there and unscrew the coil off the mandrel.",
+  ],
+  mandrelPlain: [
+    "Plain mandrel (the turns are too close together for a groove): print it standing on the handle; it needs no supports.",
+    "If it comes in several pieces, glue each spigot into the piece above; the flat on the spigot keeps them in line.",
+    "Hold the straight lead along the handle and wind the turns side by side from the top of the handle up, keeping the wire tight.",
+    "Stretch the coil evenly until the last turn touches the shoulder and hook the end into the slot in the shoulder.",
+    "Cut the end at the slot and slide the coil off the mandrel.",
+  ],
 };
 
 const D_MAX = 3;      // thicker wire is not bent in a printed jig
@@ -214,4 +230,64 @@ export function bendParts(d: Design): PartSpec[] {
     });
   }
   return out;
+}
+
+// ---------------------------------------------------------------- spring coil mandrel
+
+export const MANDREL_HANDLE = 20;   // mm of plain core below the coil, to hold
+const CAP = 2;                      // mm: top cap (grooved) or shoulder ring (plain) above the coil
+const RIDGE = 0.8;                  // mm of plastic between neighbouring turns for a groove
+const CORE_MIN = 3;                 // mm: a thinner core is a drill bit's job
+const KEY_H = 8;                    // spigot height between stacked pieces
+
+/** Spring coil in mm from the model: the driven wires after the straight lead; axis = circumcentre of the first three coil
+ *  points (c, xy), turns by unwrapped atan2 round it (as helixGeometry); a0/a1 = start/end angles (rad); H = coil length,
+ *  z0 = coil start; L = mandrel length (handle + coil + cap). */
+export function springGeometry(d: Design) {
+  const coil = d.wires.filter((w) => w.group === "driven" && !w.drawOnly && !w.necOnly && Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) > 1e-9);
+  const pts = [coil[0].a, ...coil.map((w) => w.b)].map((p: Vec3): V3 => [mm(p[0]), mm(p[1]), mm(p[2])]);
+  const [[ax, ay], [bx, by], [cx, cy]] = pts, k = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by));
+  const q = (x: number, y: number) => x * x + y * y;
+  const c: [number, number] = [(q(ax, ay) * (by - cy) + q(bx, by) * (cy - ay) + q(cx, cy) * (ay - by)) / k, (q(ax, ay) * (cx - bx) + q(bx, by) * (ax - cx) + q(cx, cy) * (bx - ax)) / k];
+  const ang = (p: V3) => Math.atan2(p[1] - c[1], p[0] - c[0]);
+  let turn = 0;
+  for (let i = 1; i < pts.length; i++) { const da = ang(pts[i]) - ang(pts[i - 1]); turn += da - 2 * Math.PI * Math.round(da / (2 * Math.PI)); }
+  const R = pts.reduce((s, p) => s + Math.hypot(p[0] - c[0], p[1] - c[1]), 0) / pts.length, wireD = mm(2 * coil[0].r);
+  const n = Math.abs(turn) / (2 * Math.PI), hand = (turn > 0 ? 1 : -1) as 1 | -1, z0 = pts[0][2], H = pts[pts.length - 1][2] - z0, S = H / n;
+  const grooved = S - wireD - CLEAR >= RIDGE;
+  return { R, wireD, S, n, hand, H, c, z0, a0: ang(pts[0]), a1: ang(pts[pts.length - 1]), grooved, L: MANDREL_HANDLE + H + (grooved ? (wireD + CLEAR) / 2 : 0) + CAP };
+}
+export type SpringGeometry = ReturnType<typeof springGeometry>;
+
+/** Upright mandrel, axis on z, handle from z = 0, coil from MANDREL_HANDLE to + H; anchor slot at the coil's top end. */
+function mandrel(M: ManifoldToplevel, g: SpringGeometry): Manifold[] {
+  const c = g.wireD + CLEAR, rc = g.R - c / 2, zt = MANDREL_HANDLE + g.H, deg = 180 / Math.PI;
+  const cyl = (h: number, r: number, z: number) => M.Manifold.cylinder(h, r, r, sides(r)).translate([0, 0, z]);
+  const cuts: Manifold[] = [];
+  let body: Manifold;
+  if (g.grooved) {
+    body = M.Manifold.union([cyl(MANDREL_HANDLE, rc, 0), cyl(g.L - MANDREL_HANDLE, g.R, MANDREL_HANDLE)]);
+    // start one groove width low and turn it back, so the groove is at the coil's start angle at the handle top
+    cuts.push(twistGroove(M, g.R, g.wireD, MANDREL_HANDLE - c, zt + c, g.S, g.hand).rotate([0, 0, g.a0 * deg - (g.hand * 360 * c) / g.S]));
+  } else body = M.Manifold.union([cyl(zt, rc, 0), cyl(CAP, rc + 1.5, zt)]);   // shoulder: the stretched coil stops against it
+  // anchor slot: one wire wide, 1 mm deeper than the core, from the coil top through the top
+  cuts.push(box(M, [rc - 1, -c / 2, zt], [(g.grooved ? g.R : rc + 1.5) + 1, c / 2, g.L + 1]).rotate([0, 0, g.a1 * deg]));
+  const part = body.subtract(M.Manifold.union(cuts)), rk = rc - Math.min(WALL, rc / 2), f = 0.4 * rk;
+  return stack(part, g.L, (zc) => ({
+    below: M.Manifold.extrude(dShape(M, rk, f), KEY_H + 2).translate([0, 0, zc - 2]),
+    aboveCut: M.Manifold.extrude(dShape(M, rk + CLEAR / 2, f + CLEAR / 2), KEY_H + 1.5).translate([0, 0, zc - 1]),
+  }));
+}
+
+/** Coil mandrel for the spring: [] when the wire is over 3 mm or the core (2R − d − CLEAR) under 3 mm. */
+export function coilParts(d: Design): PartSpec[] {
+  const g = springGeometry(d), core = 2 * g.R - g.wireD - CLEAR;
+  if (g.wireD > D_MAX + 1e-9 || core < CORE_MIN) return [];
+  const wire = { len: g.wireD / 1000 }, n = Math.round(g.n * 10) / 10;
+  return [{
+    id: "coil-mandrel", title: BEND_STRINGS[6], use: "former", qty: 1,
+    purpose: g.grooved ? msg(BEND_STRINGS[7], wire, { len: core / 1000 }, { len: g.S / 1000 }, n) : msg(BEND_STRINGS[8], { len: core / 1000 }, wire, n, { len: g.H / 1000 }),
+    howTo: (g.grooved ? BEND_HOWTO.mandrel : BEND_HOWTO.mandrelPlain).map((s) => msg(s)),
+    build: (M) => mandrel(M, g),
+  }];
 }

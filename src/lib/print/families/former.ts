@@ -26,7 +26,7 @@ const FLANGE_T = 2;   // base flange on the reflector
 const KEY_H = 8;      // spigot height between stacked pieces
 const mmv = (p: Vec3): V3 => [mm(p[0]), mm(p[1]), mm(p[2])];
 /** Polygon sides for a circle of radius r with a chord sag under 0.05 mm. */
-const sides = (r: number) => Math.max(32, Math.ceil((2 * Math.PI) / Math.sqrt(0.4 / r)));
+export const sides = (r: number) => Math.max(32, Math.ceil((2 * Math.PI) / Math.sqrt(0.4 / r)));
 
 /** Helix geometry in mm from the model: feed wire up the axis to h0, a radial stub to R, then the coil. */
 export function helixGeometry(d: Design) {

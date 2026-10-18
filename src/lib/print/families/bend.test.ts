@@ -4,8 +4,11 @@ import type { Params } from "../../types";
 import { loadManifold } from "../manifold";
 import { buildPart } from "../parts";
 import { bendPaths, flatten, signature, type Flat } from "../paths";
-import { MAX_SIZE } from "../rules";
-import { bendParts, cornerJigs, plateGroove } from "./bend";
+import { CLEAR, MAX_SIZE } from "../rules";
+import { ANTENNA_BY_ID } from "../../antennas";
+import { buildPack, en } from "../../build";
+import { pieceBottoms } from "../shapes";
+import { BEND_HOWTO, bendParts, coilParts, cornerJigs, MANDREL_HANDLE, plateGroove, springGeometry } from "./bend";
 import { ball, inside, setup } from "./testkit";
 
 let M: ManifoldToplevel;
@@ -224,4 +227,80 @@ describe("corner jigs", () => {
     const { path: g, lead } = plateGroove(f);
     expect(Math.hypot(g[lead][0] - g[0][0], g[lead][1] - g[0][1])).toBeGreaterThan((3 + 0.3) / 2 + 0.5);
   });
+});
+
+describe("coil mandrel", () => {
+  /** Design point → mandrel coordinates (axis on z, handle from z = 0). */
+  const local = (g: ReturnType<typeof springGeometry>, q: [number, number, number]): [number, number, number] =>
+    [q[0] * 1000 - g.c[0], q[1] * 1000 - g.c[1], q[2] * 1000 - g.z0 + MANDREL_HANDLE];
+  const restack = (segs: Manifold[], H: number) => { const zs = pieceBottoms(H); return M.Manifold.union(segs.map((s, i) => s.translate([0, 0, segs.length > 1 ? zs[i] : 0]))); };
+  const area = (m: Manifold, z: number) => m.slice(z).area();
+
+  it("reads the design: diameter, pitch, turns, hand, coil length", () => {
+    const { d } = setup("spring", { D: 0.02, pitch: 0.005, d: 0.0015 });
+    const g = springGeometry(d), dim = (k: string) => d.dims.find((x) => x.label === k)!.value * 1000;
+    expect(2 * g.R).toBeCloseTo(dim("Coil diameter (wire centre)"), 6);
+    expect(g.S).toBeCloseTo(dim("Turn spacing (pitch)"), 6);
+    expect(g.H).toBeCloseTo(dim("Coil length (axial)"), 6);
+    expect(g.wireD).toBeCloseTo(1.5, 9);
+    expect(g.hand).toBe(1);
+    expect(g.n * g.S).toBeCloseTo(g.H, 6);
+  });
+  it("spring defaults: plain mandrel (close-wound), shoulder at the coil length", () => {
+    const { d } = setup("spring");
+    const ps = coilParts(d), g = springGeometry(d);
+    expect(ps.map((s) => s.id)).toEqual(["coil-mandrel"]);
+    expect(ps[0].use).toBe("former");
+    expect(ps[0].howTo.map((m) => m.s)).toEqual(BEND_HOWTO.mandrelPlain);
+    const segs = ps[0].build(M);
+    expect(segs).toHaveLength(1);
+    const core = 2 * g.R - g.wireD - CLEAR, z = MANDREL_HANDLE + g.H;
+    expect(area(segs[0], z - 0.2)).toBeCloseTo(Math.PI * (core / 2) ** 2, 0);
+    expect(area(segs[0], z + 0.2)).toBeGreaterThan(Math.PI * ((core + 2) / 2) ** 2);
+    // the coil is clear of the core everywhere (the last turn stops against the shoulder: its top half wire is left out)
+    const pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b)).filter((q) => q[2] < z - g.wireD / 2);
+    expect(pts.length).toBeGreaterThan(200);
+    for (const q of pts) expect(inside(segs[0], ball(M, q, g.wireD)), `${q}`).toBeLessThan(1e-3);
+    expect(buildPart(M, ps[0], "t").ok).toBe(true);
+  });
+  it("open-pitch spring: grooved mandrel holds every design coil point", () => {
+    const { d } = setup("spring", { D: 0.02, pitch: 0.005, d: 0.0015 });
+    const [s] = coilParts(d), g = springGeometry(d);
+    expect(s.howTo.map((m) => m.s)).toEqual(BEND_HOWTO.mandrel);
+    const whole = restack(s.build(M), g.L);
+    const pts = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b));
+    for (const q of pts) {
+      expect(inside(whole, ball(M, q, g.wireD)), `clear ${q}`).toBeLessThan(1e-3);
+      expect(inside(whole, ball(M, q, g.wireD + 2)), `held ${q}`).toBeGreaterThan(0.01);
+    }
+    expect(buildPart(M, s, "t").ok).toBe(true);
+  }, 60_000);
+  it("no mandrel for wire over 3 mm or a core under 3 mm; the build steps then name a drill bit", () => {
+    // d = 4 mm needs a pitch above 4.4 mm (spring.build clamps d to 0.9·pitch) and D ≥ 2d
+    expect(coilParts(setup("spring", { d: 0.004, pitch: 0.006, D: 0.012 }).d)).toEqual([]);
+    const { d } = setup("spring", { D: 0.003 });
+    expect(coilParts(d)).toEqual([]);
+    const def = ANTENNA_BY_ID.spring, p = { ...def.defaults, D: 0.003 };
+    const st = buildPack(def, p, def.build(p)).steps;
+    const w = st.find((m) => m.s === "Wind it on a drill bit or bolt of {0}")!;
+    expect((w.a![0] as { len: number }).len).toBeCloseTo(0.003 - 0.0008 - 0.0003, 9);
+    expect(en(w)).toBe("Wind it on a drill bit or bolt of 1.90 mm");
+    expect(buildPack(def, def.defaults).steps.some((m) => m.s === "Wind it on a drill bit or bolt of {0}")).toBe(false);
+  });
+  it("a spring at the turn cap is stacked: several pieces, each within the bed", () => {
+    const { d } = setup("spring", { bands: "27e6-27.5e6", D: 0.02, pitch: 0.005, d: 0.0015 });
+    const g = springGeometry(d);
+    expect(g.n).toBeCloseTo(100, 6);
+    const [s] = coilParts(d), r = buildPart(M, s, "t");
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.segments.length).toBeGreaterThan(1);
+      r.segments.forEach((x) => expect(Math.max(...x.size)).toBeLessThanOrEqual(MAX_SIZE));
+    }
+    // the groove runs on across the cuts: design points near them are clear once the pieces are put back together
+    const whole = restack(s.build(M), g.L), cuts = pieceBottoms(g.L).slice(1);
+    const near = d.wires.filter((x) => x.group === "driven").slice(1).map((w) => local(g, w.b)).filter((q) => cuts.some((z) => Math.abs(q[2] - z) < 6));
+    expect(near.length).toBeGreaterThan(8);
+    for (const q of near) expect(inside(whole, ball(M, q, g.wireD)), `${q}`).toBeLessThan(1e-3);
+  }, 120_000);
 });

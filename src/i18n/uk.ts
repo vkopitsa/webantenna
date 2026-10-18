@@ -563,6 +563,7 @@ export const UK: Record<string, string> = {
   "Cone rod": "Стрижень конуса",
   "Top whip": "Верхній штир",
   "Wind it on a former; see the helix dimensions": "Намотайте на оправку; див. розміри спіралі",
+  "Wind it on a drill bit or bolt of {0}": "Намотайте на свердло або болт діаметром {0}",
   "PCB with the loop trace ({0} × {1} loop)": "Плата з доріжкою рамки (рамка {0} × {1})",
   "Reflector loop": "Рамка рефлектора",
   "Driven loop": "Активна рамка",

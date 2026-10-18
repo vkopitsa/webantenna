@@ -408,7 +408,7 @@ export function substrateNotes(def: AntennaDef, p: Params, d: Design): Msg[] {
 // ---------------------------------------------------------------- build steps
 
 /** What the cut list and bill of materials say, so the generic steps only mention what applies. */
-export interface StepsCtx { loop?: boolean; cutLong?: boolean; match?: boolean }
+export interface StepsCtx { loop?: boolean; cutLong?: boolean; match?: boolean; wind?: number }
 
 export function steps(d: Design, hasBoom: boolean, tunable: boolean, ctx: StepsCtx = {}): Msg[] {
   const s: Msg[] = [];
@@ -444,6 +444,7 @@ export function steps(d: Design, hasBoom: boolean, tunable: boolean, ctx: StepsC
     }
   } else {
     s.push(ctx.cutLong ? M("Cut every part to the cut length in the list. Driven parts are cut long so you can trim them.") : M("Cut every part to the cut length in the list."));
+    if (ctx.wind != null) s.push(M("Wind it on a drill bit or bolt of {0}", { len: ctx.wind }));
     if (hasBoom) s.push(M("Tape the 1:1 drilling strip to the boom, mark the element positions, then drill and fit the elements."));
     else s.push(M("Bend and assemble the parts using the dimensions and, where it fits on paper, the 1:1 template."));
     s.push(ctx.match ? M("Fit the feed line at the feed point, with the balun or match from the bill of materials.") : M("Fit the feed line at the feed point."));
@@ -473,7 +474,10 @@ export function buildPack(def: AntennaDef, p: Params, d = def.build(p)): BuildPa
   const t = tuning(def, p, d);
   const cuts = d.pcb ? [] : cutList(def, d, new Set(t.rows.map((r) => r.tag)));
   const hasBoom = !d.pcb && pieces(d).some((pc) => pc.mech && pc.length > 0.05);
-  return { bom: bom(def, d, cuts), cuts, tune: t.rows, tuneNote: t.note, substrate: substrateNotes(def, p, d), steps: steps(d, hasBoom, t.rows.length > 0, { loop: def.id === "pcbloop", cutLong: cuts.some((c) => c.cut > c.length + 1e-6), match: !!feedMatch(def, d) }), hasBoom };
+  // spring: inside diameter of the coil (wire-centre D − d − 0.3 mm clearance); below 3 mm there is no printed mandrel
+  const D = def.id === "spring" ? d.dims.find((x) => x.label === "Coil diameter (wire centre)")?.value : undefined;
+  const core = D != null ? D - 2 * d.wires.find((w) => w.group === "driven")!.r - 0.0003 : Infinity;
+  return { bom: bom(def, d, cuts), cuts, tune: t.rows, tuneNote: t.note, substrate: substrateNotes(def, p, d), steps: steps(d, hasBoom, t.rows.length > 0, { loop: def.id === "pcbloop", cutLong: cuts.some((c) => c.cut > c.length + 1e-6), match: !!feedMatch(def, d), wind: core < 0.003 ? core : undefined }), hasBoom };
 }
 
 // ---------------------------------------------------------------- measured vs model
@@ -516,7 +520,7 @@ export function advise(def: AntennaDef, p: Params, tune: TuneRow[], z: ZPoint[],
 export const BUILD_STRINGS = [
   ...Object.values(NOT_TRIMMED), ...Object.values(PRINTED).flatMap((x) => [x.what, x.how]),
   "Band element", "Folded dipole", "Move each end of the folded dipole in by {0}", "Disc rod", "Cone rod", "Top whip",
-  "Wind it on a former; see the helix dimensions", "PCB with the loop trace ({0} × {1} loop)", "Reflector loop", "Driven loop", "Radiator", "Driven element", "Director", "Reflector", "Parasitic element", "Radial",
+  "Wind it on a former; see the helix dimensions", "Wind it on a drill bit or bolt of {0}", "PCB with the loop trace ({0} × {1} loop)", "Reflector loop", "Driven loop", "Radiator", "Driven element", "Director", "Reflector", "Parasitic element", "Radial",
   "Matching section or stub", "Wire", "Boom or support", "Helix wire", "Leaf wire", "Semi-rigid coax RG402 (Ø3.6 mm) with an SMA plug, at least {0} long", "Runs through the boards: the shield is soldered to them", "Stack the boards on the coax at the listed spacings (align the drill holes and keep the spacing within ±0.1 mm, e.g. with spacers cut to the listed height) and solder them in place.", "Spring wire (lead + coil, straightened)", "Coax section (cut braid to braid)",
   "Shorten the loop by {0} (at the joint or overlap)", "Trim {0} off the open end", "Trim {0} off each end",
   "SMA panel jack (probe through the board)", "SMA edge-mount or u.FL connector", "SMA edge-mount connector",
