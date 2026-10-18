@@ -133,6 +133,7 @@ const NOT_TRIMMED: Record<string, string> = {
   skyconecage: "Broadband: not tuned by trimming. The pin gap sets the top of the band and the rim height the bottom; check the SWR across the band.",
   skyconecagemini: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
   skyconecage40: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
+  skycone40: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
   skyconecage44: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
   skyconecage55: "Not tuned by trimming: the two capacitors and the coil turns set the double-tuned match; check the SWR across the band and change the pin capacitor by one E24 step if the whole band sits high.",
   skycone7: "Broadband: not tuned by trimming. The pin gap sets the top of the band and the rim height the bottom; check the SWR across the band.",
@@ -428,6 +429,7 @@ export function steps(d: Design, hasBoom: boolean, tunable: boolean, ctx: StepsC
     s.push(M("Print the 1:1 flat patterns, glue them onto the sheet and cut the parts out (tin snips, then file the edges)."));
     s.push(M("Roll each sector into its cone and each strip into its ring over a former, overlap or butt the seam and solder it along its length."));
     s.push(d.sheets.some((x) => /skirt/i.test(x.label)) ? M("Solder the hot element together (washer, cones, rim, lid) and the ground cone with its skirt. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.") : M("Solder the hot element together (washer, cones, rim, lid) and the ground cone. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap."));
+    if (d.wires.some((w) => w.tag === "S")) s.push(M("Last, with the hot element on the centre pin: solder the straight shorting wire upright between the underside of the hot cone and the top of the ground cone, at the listed distance from the axis (±0.5 mm). Tin both spots first and keep the wire ends short; one wire only."));
   } else if (d.frames) {
     s.push(M("Print the 1:1 frame template (or the bending jig) and bend every frame over it with flat-nose pliers: all frames of a side must be identical."));
     s.push(d.frames.pinCap ? M("Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then join the washer to the coax centre pin through the capacitor (see the capacitor step below), keeping the listed gap.") : M("Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then solder the washer onto the coax centre pin at the listed gap."));
@@ -583,6 +585,7 @@ export const BUILD_STRINGS = [
   "Fit the {0} pF capacitor in series at the ground end of the shorting wire marked with it on the template: cut the wire there and solder the capacitor in, with short leads.",
   "Print the 1:1 flat patterns, glue them onto the sheet and cut the parts out (tin snips, then file the edges).",
   "Roll each sector into its cone and each strip into its ring over a former, overlap or butt the seam and solder it along its length.",
+  "Last, with the hot element on the centre pin: solder the straight shorting wire upright between the underside of the hot cone and the top of the ground cone, at the listed distance from the axis (±0.5 mm). Tin both spots first and keep the wire ends short; one wire only.",
   "Solder the hot element together (washer, cones, rim, lid) and the ground cone with its skirt. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.",
 ];
 

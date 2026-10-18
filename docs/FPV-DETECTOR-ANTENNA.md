@@ -534,6 +534,20 @@ the 40 mm box gives up; the capacitor-matched cage needs a lumped part the app's
 `results/run40.sh` (the runs) and `results/run40m.sh` (the same cages re-optimised for the mean loss);
 `band13.py` prints the table above from the `results/sweep_*.json` files.
 
+**The same box in sheet metal (S40).** W40's profile cut from 0.3–0.5 mm brass or copper instead of bent wire
+(hot cones, rim and lid on the pin, ground cone and skirt on the jacket) still needs the shorting wire: without it the solid
+shape is 13 − 16j Ω at 1.48 GHz (BoR, SWR 4.3) and good only from 1.8 GHz. One straight Ø1 mm wire from the underside of
+the hot cone to the ground cone, **8.0 mm from the axis** (z −0.6 → 12.6 mm, 13.2 mm long; the cage's 6.9 mm left a
++30j hump at 2 GHz on the solid cones), gives **SWR ≤ 1.92 over 1.4 – 6.4 GHz** (64 points). BoR cannot hold one wire
+(m = 0), so the sheet is a NEC-2 wire grid (`sheetgrid.py`: frames on the equal-area radius ρ / n, hoops every 1.8 mm):
+without the wire it follows BoR (24 frames: R ≈ 15 % low, X ≈ +8 Ω, the same curve), and 24 → 32 → 40 frames, 2.5 → 1.8 mm
+hoops and 2 → 1.5 mm segments move the SWR by ≤ 0.1. Wire position, worst SWR over 1.4 – 6.6 GHz (32 frames): shr 0.24
+(7.7 mm) 2.03, **0.27 (8.0 mm) 1.94**, 0.30 (8.4 mm) 2.11 (the bottom edge against the 2 GHz hump); the washer radius
+(2.9 / 3.6 mm) did not help. Cable (24 frames, 1.4 – 3 GHz): bare 15 / 25 / 35 cm up to 3.7 / 3.3 / 2.8, one bead ≤ 2.0, the 6-bead
+sleeve ≤ 1.9. In the app it is **"Sky-tilted capped bicone, mini sheet metal (4.6:1)"** (`skycone40`): the sheet types'
+flat patterns, cover and cup, plus the wire. `tools/wideband-antenna/designs/S40.json`, `export_sheet_table.py`,
+`results/app_S40.log`, `results/cable_S40.log`.
+
 ### Two antennas instead of one: 960 MHz – 1.36 GHz and 1.36 – 7 GHz
 
 The 40 mm study ends at the Chu floor: one cage cannot be small *and* cover 960 MHz – 6.4 GHz. Two cages can,

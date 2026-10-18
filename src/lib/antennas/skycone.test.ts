@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ANTENNA_BY_ID } from "./index";
-import { SKYCONE_8, SKYCONE_W16, SKYCONE_A55, SKYCONE_B44, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
+import { SKYCONE_8, SKYCONE_W16, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
 import { SKYCONE_TABLES, skyconeCurrents, skyconeGain, skyconeZ } from "./skycone";
 import { buildPack } from "../build";
 import { radiationEligible, s11, simulate } from "../simulate";
@@ -123,6 +123,33 @@ describe("sky-tilted capped bicones", () => {
     expect(parts).toEqual(expect.arrayContaining(["shell", "skycone-cup", "skycone-bend", "skycone-cradle", "skycone-hoops"]));
     const k = SKYCONE_W40.cage!.short!.k;
     expect(skyconeCurrents("skyconecage40", d)!.els.length).toBe(16 * (SKYCONE_W40.cur.seg.length - k) + k);
+  });
+
+  it("mini sheet metal at 1.4 GHz is design S40: W40's profile in sheet + one Ø1 mm shorting wire, SWR < 2 over 1.4–6.4 GHz", () => {
+    const def = ANTENNA_BY_ID.skycone40, p = { bands: "1400e6-6400e6" }, d = def.build(p);
+    // tools/wideband-antenna/designs/S40.json (W40 with shr 0.27): the wire 8.0 mm from the axis, z −0.6 → 12.6 mm
+    expect(dim("skycone40", "1400e6-6400e6", "Overall height") * 1e3).toBeCloseTo(39.8, 1);
+    expect(dim("skycone40", "1400e6-6400e6", "Ground cone diameter") * 1e3).toBeCloseTo(39.3, 1);
+    expect(dim("skycone40", "1400e6-6400e6", "Shorting wire length") * 1e3).toBeCloseTo(13.19, 1);
+    const sh = d.wires.filter((w) => w.tag === "S");
+    expect(sh.length).toBe(1);
+    expect(Math.hypot(sh[0].a[0], sh[0].a[1]) * 1e3).toBeCloseTo(8.04, 2);
+    expect(sh[0].r * 2e3).toBeCloseTo(1, 6);
+    expect(d.sheets!.length).toBeGreaterThan(3);
+    expect(d.cuts).toHaveLength(1);
+    const r = simulate(def, p, d);
+    expect(r.notes.some((n) => n.includes("sheet metal with a shorting wire"))).toBe(true);
+    expect(Math.max(...r.z.filter((q) => q.f >= 1.4e9 && q.f <= 6.4e9).map((q) => s11(q, 50).swr))).toBeLessThan(2.0);
+    // half the size at 2.8 GHz: the wire scales too
+    const h = def.build({ bands: "2800e6-12800e6" }).wires.find((w) => w.tag === "S")!;
+    expect(h.r).toBeCloseTo(sh[0].r / 2, 9);
+    const pack = buildPack(def, def.defaults);
+    expect(pack.steps.some((x) => x.s.startsWith("Last, with the hot element on the centre pin"))).toBe(true);
+    expect(pack.bom.some((x) => x.item.s.startsWith("Brass or copper sheet"))).toBe(true);
+    const parts = partsFor("skycone40", def.defaults, d).map((q) => q.id);
+    expect(parts).toEqual(expect.arrayContaining(["shell", "skycone-cup"]));
+    const c = skyconeCurrents("skycone40", d)!, k = SKYCONE_S40.short!.k;
+    expect(c.els.length).toBe(12 * (SKYCONE_S40.cur.seg.length - k) + k);
   });
 
   it("mini wire cage for 1.36–7 GHz is design B44f: the same 314-wire topology at Ø43 × 44 mm, SWR ≤ 1.75", () => {

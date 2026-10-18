@@ -35,6 +35,7 @@ const FAMILIES: Record<string, (p: Params, d: Design) => PartSpec[]> = {
   skyconecage: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
   skyconecagemini: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
   skyconecage40: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
+  skycone40: (_p, d) => skyconeParts(d, 0.3, d.coax?.choke !== "none"),
   skyconecage44: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
   skyconecage55: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
   skycone8: (_p, d) => skyconeParts(d),

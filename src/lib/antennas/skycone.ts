@@ -9,7 +9,7 @@ import type { IdealCurrents } from "../idealcurrents";
 import { fmt, wavelength } from "../rf";
 import { v } from "../geom";
 import { band, BANDS } from "./common";
-import { SKYCONE_21, SKYCONE_7, SKYCONE_8, SKYCONE_A55, SKYCONE_B44, SKYCONE_W16, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
+import { SKYCONE_21, SKYCONE_7, SKYCONE_8, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_W16, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
 
 export interface SkyconeTable {
   /** Design band (Hz) the profile and the table belong to. */
@@ -36,6 +36,10 @@ export interface SkyconeTable {
    *  turns / coilDia (m): the shorting wires are wound into coils (A55); cap: a series capacitor (pF) in every second
    *  shorting wire; pinCap: a series capacitor (pF) in the centre pin (the double-tuned match of A55). */
   cage?: { n: number; r: number; hub: number; pinCap?: number; short?: { n: number; rho: number; zHot: number; zGnd: number; frame: number; k: number; turns?: number; coilDia?: number; cap?: number } };
+  /** Sheet-metal shape with one straight shorting wire (tools/wideband-antenna/sheetgrid.py: NEC-2 wire grid of the
+   *  sheet plus the wire): rho from the axis, the heights of its hot and ground ends, wire radius r (m); the last k
+   *  segments of `cur` are on it (one wire at φ = 0). */
+  short?: { rho: number; zHot: number; zGnd: number; r: number; k: number };
   /** The same antenna with its coax jacket hanging bare down the axis (no ferrite, no choke tube), from
    *  tools/wideband-antenna/export_bare_table.py: cable lengths in wavelengths at fLo, frequencies as a ratio to fLo,
    *  R and X (Ω) at the coax end per length. */
@@ -173,11 +177,11 @@ export function skyconeCurrents(defId: string, d: Design): IdealCurrents | null 
   t.cur.f.forEach((x, i) => { if (Math.abs(Math.log(x / u)) < Math.abs(Math.log(t.cur.f[k] / u))) k = i; });
   const I = t.cur.i[k], els: CurrentElement[] = [], segs: number[] = [], ir: number[] = [], ii: number[] = [];
   const ring = t.cage?.n ?? RING;                     // a wire cage: on its frames
-  const sh = t.cage?.short, single = t.cur.seg.length - (sh?.k ?? 0);
+  const sh = t.cage?.short ?? t.short, single = t.cur.seg.length - (sh?.k ?? 0), shFrame = t.cage?.short?.frame ?? 0;
   t.cur.seg.forEach(([r0, z0, r1, z1], j) => {
     const one = j >= single;                         // a shorting wire: one wire at its own angle
     for (let m = 0; m < (one ? 1 : ring); m++) {
-      const ph = (2 * Math.PI * (one ? sh!.frame : m)) / ring, c = Math.cos(ph), sn = Math.sin(ph);
+      const ph = (2 * Math.PI * (one ? shFrame : m)) / ring, c = Math.cos(ph), sn = Math.sin(ph);
       const p: Vec3 = [r0 * s * c, r0 * s * sn, z0 * s], q: Vec3 = [r1 * s * c, r1 * s * sn, z1 * s];
       const cr = I[2 * j] / (one ? 1 : ring), ci = I[2 * j + 1] / (one ? 1 : ring);
       els.push({ dl: [q[0] - p[0], q[1] - p[1], q[2] - p[2]], mid: [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2], cr, ci, r: (t.cage?.r ?? 0.5e-3) * s });
@@ -191,7 +195,8 @@ export function skyconeCurrents(defId: string, d: Design): IdealCurrents | null 
 /** Frequency range the table covers (Hz) for a design starting at fLow. */
 export const skyconeRange = (t: SkyconeTable, fLow: number): [number, number] => [t.f[0] * fLow, t.f[t.f.length - 1] * fLow];
 
-/** `sleeve`: the compact shape couples to the coax so strongly that one ferrite bead is not enough. */
+/** `sleeve`: the compact shape couples to the coax so strongly that one ferrite bead is not enough.
+ *  A table with `short` (the Ø40 mm sheet version, S40) adds its straight shorting wire between the cones. */
 function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
   const { bands } = band(bandsP);
   const fLow = Math.min(...bands.map((b) => b[0])), fHigh = Math.max(...bands.map((b) => b[1]));
@@ -217,6 +222,9 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
     { a: v(0, 0, 0), b: v(0, 0, g), r: 0.46e-3, group: "feed" },
     { a: v(0, 0, 0), b: v(0, 0, zBot - 5e-3), r: COAX_R, group: "feed" },
   ];
+  const sw = t.short && { a: at(t.short.rho * s, t.short.zHot * s, 0), b: at(t.short.rho * s, t.short.zGnd * s, 0), r: t.short.r * s };
+  const swLen = sw ? Math.abs(sw.a[2] - sw.b[2]) : 0;
+  if (sw) wires.push({ a: sw.a, b: sw.b, r: sw.r, group: "driven", tag: "S" });
   const rim = hot.find((q) => q.kind === "strip"), skirt = gnd.find((q) => q.kind === "strip");
   const halfAngle = (q: (typeof segs)[number]) => `${fmt((Math.atan2(Math.abs(q.b[0] - q.a[0]), Math.abs(q.b[1] - q.a[1])) * 180) / Math.PI, 1)}°`;
   const cones = segs.map((q, k) => ({ q, sh: sheets[k] })).filter((x) => x.sh.kind === "sector");
@@ -231,6 +239,12 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
   if (strips.length) tables.push({ title: "Strips (roll into a cylinder)", columns: [{ label: "Part", kind: "text" }, { label: "Length (round)", kind: "len" }, { label: "Width", kind: "len" }], rows: strips.map((x) => x.kind === "strip" ? [x.label, x.w, x.h] : []) });
   const discs = sheets.filter((x) => x.kind === "disc");
   if (discs.length) tables.push({ title: "Discs and rings", columns: [{ label: "Part", kind: "text" }, { label: "Outer diameter", kind: "len" }, { label: "Hole diameter", kind: "len" }], rows: discs.map((x) => x.kind === "disc" ? [x.label, x.d, x.hole] : []) });
+  const SHORT = "Shorting wire (hot cone to the ground cone under it)";
+  if (sw) tables.push({
+    title: "Shorting wire (straight, between the hot cone and the ground cone)",
+    columns: [{ label: "Part", kind: "text" }, { label: "Quantity", kind: "num" }, { label: "Distance from the axis", kind: "len" }, { label: "Hot end height above the coax end", kind: "len" }, { label: "Ground end height above the coax end", kind: "len" }, { label: "Wire length", kind: "len" }, { label: "Wire diameter", kind: "len" }],
+    rows: [[SHORT, 1, t.short!.rho * s, sw.a[2], sw.b[2], swLen, 2 * sw.r]],
+  });
   const f = Math.sqrt(fLow * Math.min(fHigh, fTop));
   return {
     wires, plates, sheets,
@@ -243,15 +257,24 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
       { key: "g", label: "Gap: coax end to the washer", value: g, at: [v(0, 0, 0), v(0, 0, g)] },
       ...(rim ? [{ key: "R", label: "Rim height", value: Math.abs(rim.b[1] - rim.a[1]), at: [v(rim.a[0], 0, rim.a[1]), v(rim.b[0], 0, rim.b[1])] as [Vec3, Vec3] }] : []),
       ...(skirt ? [{ key: "S", label: "Ground skirt length", value: Math.abs(skirt.b[1] - skirt.a[1]), at: [v(skirt.a[0], 0, skirt.a[1]), v(skirt.b[0], 0, skirt.b[1])] as [Vec3, Vec3] }] : []),
+      ...(sw ? [{ key: "W", label: "Shorting wire length", value: swLen, at: [sw.a, sw.b] as [Vec3, Vec3] }] : []),
       ...(bare ? [{ label: "Bare cable length (Simulation)", value: bare.len }] : []),
     ],
     tables,
+    ...(sw ? { cuts: [{ what: SHORT, qty: 1, length: swLen, dia: 2 * sw.r, note: "Straight: solder it on at the listed distance from the axis" }] } : {}),
     perf: tablePerf(t, bands, fLow, bare ? "Worst SWR in your bands (precomputed MoM, bare cable)" : "Worst SWR in your bands (precomputed MoM, no cable)", bare?.row),
     notes: [
-      "Hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation).",
-      "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency. The Simulation tab shows the precomputed body-of-revolution MoM sweep of this shape, scaled to your size.",
+      sw
+        ? "The mini wire cage's shape made from brass or copper sheet: Ø39 × 40 mm, hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket, and one straight Ø1 mm shorting wire from the hot cone down to the ground cone. A box this small is below the Chu limit for 960 MHz, so the band starts at 1.4 GHz; the wire works as an inductor across the feed and lifts the low resistance at the bottom of the band to about 50 Ω. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
+        : "Hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation).",
+      sw
+        ? "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the shorting wire), scaled to your size."
+        : "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency. The Simulation tab shows the precomputed body-of-revolution MoM sweep of this shape, scaled to your size.",
       "Feed through UT-141 (RG-402) semi-rigid coax: solder the jacket into the ground cone apex and the centre pin into the washer. Keep the pin gap as listed: it sets the top of the band.",
-      bare ? BARE_NOTE : sleeve
+      ...(sw ? ["The shorting wire is a DC short across the coax. That is fine for a receiver, but switch off any antenna power (bias-tee) on the receiver input, or put a DC block in the line."] : []),
+      bare ? BARE_NOTE : sw
+        ? "Ferrite sleeve recommended: stack about 6 ferrite beads (material 43 or 61, about 150 Ω each) on the first 11 cm of coax below the ground cone. This small antenna couples strongly to the cable: 15–35 cm of bare cable lifts the SWR to 3.7 in the lower half of the band, one bead keeps it at about 2.0, the sleeve below 1.9."
+        : sleeve
         ? "Ferrite sleeve required: stack about 6 ferrite beads (material 43 or 61, about 150 Ω each) on the first 11 cm of coax below the ground cone. This small antenna couples strongly to the cable: with one bead a 15–35 cm cable still lifts the SWR to 2.7 at the bottom of the band, with the sleeve it stays below 1.9."
         : "Clip a ferrite (about 150 Ω) onto the coax just below the ground cone: at the bottom of the band the cable otherwise carries current and the SWR depends on its length.",
       ...(fHigh > fTop * 1.001 ? ["Warning: your highest band is above this shape's range; the SWR there is not computed. Lower the bands or use the 21:1 version."] : []),
@@ -598,6 +621,19 @@ export const skyconecage40: AntennaDef = {
   build: (p) => buildCage(SKYCONE_W40, p, "w40"),
 };
 
+export const skycone40: AntennaDef = {
+  id: "skycone40",
+  name: "Sky-tilted capped bicone, mini sheet metal (4.6:1)",
+  category: "Broadband",
+  traits: { pol: "vertical", pattern: "omni" },
+  summary: "The mini wire cage's Ø39 × 40 mm shape cut from brass or copper sheet instead of bent wire, with one shorting wire between the cones: 1.4–6.4 GHz at SWR ≤ 2, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
+  multiband: "broadband",
+  maxRatio: SKYCONE_S40.fHi / SKYCONE_S40.fLo,
+  params: PARAMS,
+  defaults: { bands: "1400e6-6400e6", coax: "ferrite" },
+  build: (p) => build(SKYCONE_S40, p, true),
+};
+
 export const skyconecage44: AntennaDef = {
   id: "skyconecage44",
   name: "Sky-tilted capped bicone, mini wire cage 7 GHz (5.1:1)",
@@ -625,4 +661,4 @@ export const skyconecage55: AntennaDef = {
 };
 
 /** Tabulated results per type id (simulate.ts). */
-export const SKYCONE_TABLES: Record<string, SkyconeTable> = { skycone7: SKYCONE_7, skycone8: SKYCONE_8, skycone21: SKYCONE_21, skyconecage: SKYCONE_W16, skyconecagemini: SKYCONE_W65, skyconecage40: SKYCONE_W40, skyconecage44: SKYCONE_B44, skyconecage55: SKYCONE_A55 };
+export const SKYCONE_TABLES: Record<string, SkyconeTable> = { skycone7: SKYCONE_7, skycone8: SKYCONE_8, skycone21: SKYCONE_21, skyconecage: SKYCONE_W16, skyconecagemini: SKYCONE_W65, skyconecage40: SKYCONE_W40, skycone40: SKYCONE_S40, skyconecage44: SKYCONE_B44, skyconecage55: SKYCONE_A55 };
