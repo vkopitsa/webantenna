@@ -5,7 +5,7 @@ import { loadManifold } from "../manifold";
 import { buildPart } from "../parts";
 import { bendPaths, flatten, signature, type Flat } from "../paths";
 import { MAX_SIZE } from "../rules";
-import { bendParts, plateGroove } from "./bend";
+import { bendParts, cornerJigs, plateGroove } from "./bend";
 import { ball, inside, setup } from "./testkit";
 
 let M: ManifoldToplevel;
@@ -128,5 +128,80 @@ describe("bend plate", () => {
     expect(inside(plate, cube(0.2, q[0] + nx * w, q[1] + ny * w, -0.15))).toBeLessThan(1e-4);
     const m = g[(start + 3) % g.length], m1 = g[(start + 4) % g.length], lm = Math.hypot(m1[0] - m[0], m1[1] - m[1]);
     expect(inside(plate, cube(0.2, m[0] - (m1[1] - m[1]) / lm * w, m[1] + (m1[0] - m[0]) / lm * w, -0.15))).toBeGreaterThan(0.9 * 0.008);
+  });
+});
+
+const corners = (id: string, extra: Params = {}) => bendParts(setup(id, extra).d).filter((s) => s.id.startsWith("bend-corner"));
+/** Clear at z = 0 (ball 0.8 d) and plastic under the groove. */
+const clearAndHeld = (jig: Manifold, [x, y]: [number, number], d: number, tag: string) => {
+  expect(inside(jig, ball(M, [x, y, 0], 0.8 * d)), `${tag} clear at ${x},${y}`).toBeLessThan(1e-3);
+  const b = ball(M, [x, y, -d / 2 - 1.5], 1);
+  expect(inside(jig, b), `${tag} held at ${x},${y}`).toBeGreaterThan(0.9 * b.volume());
+};
+
+describe("corner jigs", () => {
+  it("quad 145 MHz: exactly one 90° corner jig for all 8 corners, builds, holds the wire, open at both ends", () => {
+    const cs = corners("quad");
+    expect(cs.map((s) => s.id)).toEqual(["bend-corner-1"]);
+    expect(cs[0].qty).toBe(1);
+    expect(cs[0].use).toBe("jig");
+    expect(cs[0].purpose.a![0]).toBe(8);
+    expect(cs[0].purpose.a![2]).toBe(90);
+    expect(cs[0].howTo.length).toBeGreaterThan(0);
+    const b = buildPart(M, cs[0], "t");
+    expect(b.ok).toBe(true);
+    if (b.ok) for (const s of b.segments) expect(Math.max(...s.size)).toBeLessThanOrEqual(MAX_SIZE);
+    const f = flats("quad")[0], [j] = cornerJigs(f), jig = cs[0].build(M)[0];
+    expect(j.corners).toBe(1);
+    expect(j.pegs).toHaveLength(1);
+    for (const q of [...j.path, ...j.mids]) clearAndHeld(jig, q, f.d, "quad");
+    // arms 40 mm past the fillet, and the groove runs out through the plate edge at both ends
+    const bb = jig.boundingBox();
+    for (const [e, o] of [[0, 1], [j.path.length - 1, j.path.length - 2]]) {
+      const a = j.path[e], c = j.path[o], l = Math.hypot(a[0] - c[0], a[1] - c[1]), u = [(a[0] - c[0]) / l, (a[1] - c[1]) / l];
+      const out: [number, number] = [a[0] + u[0] * 3.9, a[1] + u[1] * 3.9];
+      expect(out[0] > bb.min[0] && out[0] < bb.max[0] && out[1] > bb.min[1] && out[1] < bb.max[1]).toBe(true);
+      expect(inside(jig, ball(M, [out[0], out[1], 0], 0.8 * f.d))).toBeLessThan(1e-3);
+    }
+  });
+  it("yagi folded dipole (d 2 mm) at 145 MHz: one linked U-fold jig, fs apart", () => {
+    const { d } = setup("yagi", { driven: "folded", d: 0.002 }), cs = corners("yagi", { driven: "folded", d: 0.002 });
+    expect(cs.map((s) => s.id)).toEqual(["bend-corner-1"]);
+    expect(cs[0].purpose.a).toHaveLength(4);
+    expect(cs[0].purpose.a![0]).toBe(2);
+    expect(cs[0].purpose.a![2]).toBe(90);
+    const fs = d.dims.find((x) => x.label === "Folded dipole conductor spacing")!.value as number;
+    expect((cs[0].purpose.a![3] as { len: number }).len).toBeCloseTo(fs, 4);
+    expect(buildPart(M, cs[0], "t").ok).toBe(true);
+    const f = flats("yagi", { driven: "folded", d: 0.002 })[0], js = cornerJigs(f), jig = cs[0].build(M)[0];
+    expect(js).toHaveLength(2);
+    const j = js[0];
+    expect(j.corners).toBe(2);
+    expect(j.pegs).toHaveLength(2);
+    expect(j.mids).toHaveLength(2);
+    for (const q of j.mids) clearAndHeld(jig, q, f.d, "fold mid");
+    // the two parallel straight arms: probe each end, then their distance across the fold = fs
+    const p0 = j.path[0], p1 = j.path[1], pn = j.path[j.path.length - 1], l = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), u = [(p1[0] - p0[0]) / l, (p1[1] - p0[1]) / l];
+    clearAndHeld(jig, [p0[0] + u[0] * 10, p0[1] + u[1] * 10], f.d, "arm 1");
+    const pm = j.path[j.path.length - 2], lm = Math.hypot(pm[0] - pn[0], pm[1] - pn[1]);
+    clearAndHeld(jig, [pn[0] + (pm[0] - pn[0]) / lm * 10, pn[1] + (pm[1] - pn[1]) / lm * 10], f.d, "arm 2");
+    expect(Math.abs(Math.abs((pn[0] - p0[0]) * u[1] - (pn[1] - p0[1]) * u[0]) - fs * 1000)).toBeLessThan(0.05);
+  });
+  it("moxon defaults: corner jigs only, all build within 180 mm", () => {
+    const all = bendParts(setup("moxon").d);
+    expect(all.length).toBeGreaterThan(0);
+    expect(all.every((s) => s.id.startsWith("bend-corner"))).toBe(true);
+    expect(all.reduce((s, x) => s + (x.purpose.a![0] as number), 0)).toBe(4);
+    for (const s of all) {
+      const b = buildPart(M, s, "t");
+      expect(b.ok, s.id).toBe(true);
+      if (b.ok) for (const g of b.segments) expect(Math.max(...g.size)).toBeLessThanOrEqual(MAX_SIZE);
+    }
+  });
+  it("plate lead: the first untrimmed ball stays in front of the stop for d = 3 mm", () => {
+    // a 1.2 mm lead kinked by 90°: the old 1 mm lead ended on the fillet, whose ball (r 1.65) reached behind the stop
+    const f: Flat = { pts: [[0, 0], [1.2, 0], [1.2, 50], [60, 50]], closed: false, d: 3, corners: [1, 2], size: [60, 50] };
+    const { path: g, lead } = plateGroove(f);
+    expect(Math.hypot(g[lead][0] - g[0][0], g[lead][1] - g[0][1])).toBeGreaterThan((3 + 0.3) / 2 + 0.5);
   });
 });

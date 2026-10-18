@@ -64,8 +64,8 @@ export function bendPaths(d: Design): BendPath[] {
 export type P2 = [number, number];
 /** A planar bend path in 2D (mm, origin at the min corner, x along the longest segment); corners = vertices turning > CORNER°. */
 export interface Flat { pts: P2[]; closed: boolean; d: number; corners: number[]; size: P2 }
-/** Filleted centre line plus the pegs (inner side of each filleted corner) that hold it. */
-export interface Groove { path: P2[]; pegs: { c: P2; r: number }[] }
+/** Filleted centre line plus the pegs (inner side of each filleted corner, i = its vertex) that hold it; at[i] = index of vertex i's first path point. */
+export interface Groove { path: P2[]; pegs: { c: P2; r: number; i: number }[]; at: number[] }
 
 const CORNER = 20;   // degrees
 const DEG = Math.PI / 180;
@@ -121,8 +121,9 @@ export function flatten(p: BendPath): Flat | null {
 /** Replace each corner by an arc of centre-line radius Rf = rp + (d + CLEAR)/2 (tangent length clamped to 0.45 × the shorter neighbour run); pegs of radius rp inside. */
 export function filleted(f: Flat): Groove {
   const rp = Math.max(1.5, f.d), Rf0 = rp + (f.d + CLEAR) / 2, n = f.pts.length, isC = new Set(f.corners);
-  const path: P2[] = [], pegs: Groove["pegs"] = [];
+  const path: P2[] = [], pegs: Groove["pegs"] = [], at: number[] = [];
   f.pts.forEach((P, i) => {
+    at.push(path.length);
     if (!isC.has(i)) { path.push(P); return; }
     const A = f.pts[(i + n - 1) % n], B = f.pts[(i + 1) % n], la = Math.hypot(P[0] - A[0], P[1] - A[1]), lb = Math.hypot(B[0] - P[0], B[1] - P[1]);
     const u1 = [(P[0] - A[0]) / la, (P[1] - A[1]) / la], u2 = [(B[0] - P[0]) / lb, (B[1] - P[1]) / lb];
@@ -136,9 +137,9 @@ export function filleted(f: Flat): Groove {
     while (da < -Math.PI) da += 2 * Math.PI;
     const m = Math.max(1, Math.ceil(Math.abs(da) / (10 * DEG)));
     for (let s = 0; s <= m; s++) path.push([C[0] + Rf * Math.cos(a1 + da * s / m), C[1] + Rf * Math.sin(a1 + da * s / m)]);
-    if (Rf >= rp + f.d / 2) pegs.push({ c: C, r: rp });
+    if (Rf >= rp + f.d / 2) pegs.push({ c: C, r: rp, i });
   });
-  return { path, pegs };
+  return { path, pegs, at };
 }
 
 /** Equal for pieces equal up to rotation, mirror and (for closed paths) start point (wire d and the closed flag included): segment lengths (0.1 mm) and |turn| (0.5°), minimum over reversal and rotation. */
