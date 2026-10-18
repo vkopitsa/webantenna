@@ -45,14 +45,14 @@ def job(task):
     else:
         import family13  # noqa: F401  (coiled shunts, csh / cser of A55)
         import family10 as F10
-        z, _ = F10.model(p, f, seg=1.5e-3, cable=L, cable_seg=min(5e-3, 3e8 / f / 20))
+        z, _ = F10.model(p, f, seg=float(os.environ.get("SEG", "1.5e-3")), cable=L, cable_seg=min(5e-3, 3e8 / f / 20))
     return L, f, complex(z)
 
 
 if __name__ == "__main__":
     tasks = [(L, f) for L in LENS for f in FS]
     res = {}
-    with Pool(8) as pl:
+    with Pool(int(os.environ.get("POOL", "8"))) as pl:
         for L, f, z in pl.imap_unordered(job, tasks):
             res[(L, f)] = z
             print(f"L {L*100:5.1f} cm  {f/1e6:8.1f} MHz  Z {z.real:7.1f}{z.imag:+7.1f}j  ({len(res)}/{len(tasks)})", flush=True)

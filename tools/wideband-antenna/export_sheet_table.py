@@ -22,11 +22,11 @@ ELS = np.arange(-90, 91, 5.0)
 
 
 def _row(f):
-    return f, F10.model(p, f, seg=1.5e-3, els=ELS, nphi=8)
+    return f, F10.model(p, f, seg=float(os.environ.get("SEG", "1.5e-3")), els=ELS, nphi=8)
 
 
 # the free-space rows (export_shaped_table.py's first loop) in 8 processes, then served from this cache
-with Pool(8) as pool:
+with Pool(int(os.environ.get("POOL", "8"))) as pool:
     cache = dict(pool.map(_row, list(D.logf(nf, 0.9 * f_lo, 1.1 * f_hi))))
 _model = F10.model
 

@@ -3,7 +3,7 @@ python export_cage_table.py <family> <design.json> <n_frames> <wire_r_mm> <f_lo>
 R/X (ohm) at the coax end and gain (dBi, mean over phi) at elevations -90..90 step 5 for frequencies log-spaced over
 [0.9 f_lo, 1.1 f_hi]. Radiation-view currents: the total axial current of the n frames per frame segment (frame 0
 times n, V = 1 at the port) on one fixed mesh (lambda / 12 at 1.1 f_hi), at 16 log-spaced frequencies."""
-import sys, json, importlib
+import os, sys, json, importlib
 import numpy as np
 import designs as D
 import wirecage as W
@@ -19,7 +19,7 @@ out = dict(fLo=f_lo, fHi=f_hi, gap=p["g"], upper=[np.round(a, 6).tolist() for a 
            lower=[np.round(a, 6).tolist() for a in lo], els=els.tolist(), f=[], r=[], x=[], g=[],
            cage=dict(n=n, r=r, hub=W.HUB_R))
 for f in D.logf(nf, 0.9 * f_lo, 1.1 * f_hi):
-    z, gg = W.model(fam, p, f, n, r, per=30, els=els)
+    z, gg = W.model(fam, p, f, n, r, per=30, els=els, **({"seg": float(os.environ["SEG"])} if os.environ.get("SEG") else {}))
     g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))[::-1]        # rows come theta-ascending = elevation descending
     out["f"].append(round(f / f_lo, 5)); out["r"].append(round(z.real, 2)); out["x"].append(round(z.imag, 2))
     out["g"].append(np.round(g, 2).tolist())

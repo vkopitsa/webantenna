@@ -7,7 +7,7 @@ prints SWR and the 15-50 deg elevation gain (mean over phi) per frequency, then 
 Hot frames: axis at the washer height -> washer edge -> cones -> rim -> lid -> back to the axis (closed frames
 when the lid is closed). Ground frames: axis at z = 0 -> ground cone -> skirt. Feed: one segment on the axis
 from z = 0 to the pin gap (the coax end), 50 ohm."""
-import sys, json, math, importlib
+import os, sys, json, math, importlib
 import numpy as np
 from PyNEC import nec_context
 
@@ -35,7 +35,7 @@ def paths(fam, p):
     return hot, gnd
 
 
-HUB_R = 3.0e-3      # hub ring radius where the frames meet near the axis (a washer / soldered collar)
+HUB_R = float(os.environ.get("HUB_R", "3.0e-3"))      # hub ring radius where the frames meet near the axis (a washer / soldered collar)
 
 
 def _hubbed(path, z_axis_ok=True):

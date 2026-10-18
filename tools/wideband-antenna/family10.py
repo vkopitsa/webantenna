@@ -36,7 +36,7 @@ FS_MAIN = sorted(set(D.logf(int(os.environ.get("NFREQ", "18")), FLO, FHI))
                  | {float(f) for f in os.environ.get("FEXTRA", "").split(",") if f})   # FEXTRA: extra frequencies (Hz)
                                                  # in the cost, e.g. every 60 MHz over a narrow feature the log grid missed
 ELS = (15, 20, 25, 30, 35, 40, 45, 50)
-HUB_R = 3.0e-3
+HUB_R = float(os.environ.get("HUB_R", "3.0e-3"))     # hub ring radius (m), wire_variant.py gives it per wire diameter
 GAP_MIN = 2.5e-3            # hot and ground parts closer than this (in rho, z) are rejected
 SPACE_MIN = 2.0e-3          # neighbouring frames closer than this (3D, centre to centre) are rejected
 TW_R0 = 8e-3                # twists start at least this far from the axis (the frames crowd near the hub)

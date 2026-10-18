@@ -6,7 +6,7 @@ R/X at the coax end and gain (dBi, mean over 8 azimuth cuts: the shunt breaks th
 -90..90 step 5, frequencies log-spaced over [0.9 f_lo, 1.1 f_hi], NEC segments 1.5 mm (lambda / 30 at 6.7 GHz; the
 shorting wire needs it at the bottom of the band, where lambda / 30 is 0.15 off in SWR). Radiation-view currents: frame 0
 times n per frame segment, then the shunt's own segments (cage.short.k of them, single wires at cage.short.phi)."""
-import sys, json, math
+import os, sys, json, math
 import numpy as np
 import designs as D
 import family2 as F2
@@ -55,7 +55,7 @@ if p.get("cser", 0) > 0.05:
 out = dict(fLo=f_lo, fHi=f_hi, gap=p["g"], upper=[np.round(a, 6).tolist() for a in up],
            lower=[np.round(a, 6).tolist() for a in lo], els=els.tolist(), f=[], r=[], x=[], g=[], cage=cage)
 for f in D.logf(nf, 0.9 * f_lo, 1.1 * f_hi):
-    z, gg = F10.model(p, f, seg=1.5e-3, els=els, nphi=8)
+    z, gg = F10.model(p, f, seg=float(os.environ.get("SEG", "1.5e-3")), els=els, nphi=8)
     g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))[::-1]        # rows come theta-ascending = elevation descending
     out["f"].append(round(f / f_lo, 5)); out["r"].append(round(z.real, 2)); out["x"].append(round(z.imag, 2))
     out["g"].append(np.round(g, 2).tolist())
