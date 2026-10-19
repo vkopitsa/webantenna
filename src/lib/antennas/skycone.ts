@@ -44,6 +44,44 @@ export interface SkyconeTable {
    *  tools/wideband-antenna/export_bare_table.py: cable lengths in wavelengths at fLo, frequencies as a ratio to fLo,
    *  R and X (Ω) at the coax end per length. */
   bare?: { lensLam: number[]; f: number[]; r: number[][]; x: number[][] };
+  /** Re-solved at other wire diameters (reference scale, m), on the base table's f / bare.f grids; the base table is
+   *  its own wire (2·cage.r, or 2·short.r for S40). hub: the hub ring radius used (m), only when above the 3 mm floor. */
+  wires?: { d: number; hub?: number; r: number[]; x: number[]; g: number[][]; bare?: { r: number[][]; x: number[][] } }[];
+}
+
+/** Base wire diameter (m) of a table: the one its r / x / g were solved at. */
+export const baseWire = (t: SkyconeTable): number => 2 * (t.cage ? t.cage.r : t.short ? t.short.r : 0.5e-3);
+/** Hub ring radius (m) of an n-frame cage of wire Ø dRef: the wires of one hub must fit around the axis. */
+export const hubFor = (n: number, dRef: number): number => Math.max(3e-3, (n * dRef * 1.1) / (2 * Math.PI));
+
+const wireMemo = new WeakMap<SkyconeTable, Map<number, { t: SkyconeTable; clamped: boolean }>>();
+const mix = (a: number[], b: number[], w: number) => w === 0 ? a : w === 1 ? b : a.map((v, i) => v * (1 - w) + b[i] * w);
+const mix2 = (a: number[][], b: number[][], w: number) => a.map((row, i) => mix(row, b[i], w));
+
+/** The table re-solved at wire diameter dRef (m, reference scale): linear in log Ø between the neighbouring tabulated
+ *  diameters (the base counts as one), clamped to the tabulated range (clamped: true). The base table itself when dRef
+ *  is its wire. */
+export function tableAt(t: SkyconeTable, dRef: number): { t: SkyconeTable; clamped: boolean } {
+  const d0 = baseWire(t);
+  if (!t.wires?.length || Math.abs(dRef - d0) <= 1e-6 * d0) return { t, clamped: false };
+  let memo = wireMemo.get(t);
+  if (!memo) wireMemo.set(t, (memo = new Map()));
+  const key = Math.round(dRef * 1e6) / 1e6;
+  const hit = memo.get(key);
+  if (hit) return hit;
+  const pts = [{ d: d0, hub: t.cage?.hub, r: t.r, x: t.x, g: t.g, bare: t.bare ? { r: t.bare.r, x: t.bare.x } : undefined }, ...t.wires].sort((a, b) => a.d - b.d);
+  const clamped = dRef < pts[0].d * (1 - 1e-6) || dRef > pts[pts.length - 1].d * (1 + 1e-6);
+  const d = Math.min(pts[pts.length - 1].d, Math.max(pts[0].d, dRef));
+  let k = 0;
+  while (k < pts.length - 2 && d > pts[k + 1].d) k++;
+  const a = pts[k], b = pts[k + 1], w = Math.min(1, Math.max(0, Math.log(d / a.d) / Math.log(b.d / a.d)));
+  const out: SkyconeTable = { ...t, r: mix(a.r, b.r, w), x: mix(a.x, b.x, w), g: mix2(a.g, b.g, w) };
+  if (t.bare && a.bare && b.bare) out.bare = { ...t.bare, r: mix2(a.bare.r, b.bare.r, w), x: mix2(a.bare.x, b.bare.x, w) };
+  if (t.cage) out.cage = { ...t.cage, r: d / 2, hub: hubFor(t.cage.n, d) };
+  if (t.short) out.short = { ...t.short, r: d / 2 };
+  const res = { t: out, clamped };
+  memo.set(key, res);
+  return res;
 }
 
 /** "Coax below the antenna": as designed (ferrite or choke tubes) or a bare cable of three lengths. */

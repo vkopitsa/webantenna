@@ -7,7 +7,7 @@ with the design in the app. LENS_M=0.15,0.25,0.35 uses fixed lengths instead (to
 Frequencies are log-spaced over [0.9 f_lo, 1.1 f_hi] like the free-space table. Solid: per_lambda 24, the cable
 measured from below the ground cone (family2.geometry). Cage: 1.5 mm segments, the cable from the coax end
 (family10.model), cable segments min(5 mm, lambda / 20). Runs on 8 processes; the cage takes ~10 s per point.
-Then: python to_ts.py --bare app_X.json bare_X.json (prints the `bare` block to put into that table's entry)."""
+Then: python add_bare.py ../../src/lib/antennas/skycone.data.ts SKYCONE_X=bare_X.json (puts the `bare` block into that table's entry)."""
 import os
 os.environ.setdefault("NUMBA_NUM_THREADS", "1")
 os.environ.setdefault("OMP_NUM_THREADS", "1")

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ANTENNA_BY_ID } from "./index";
 import { SKYCONE_8, SKYCONE_W16, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
-import { SKYCONE_TABLES, skyconeCurrents, skyconeGain, skyconeZ } from "./skycone";
+import { SKYCONE_TABLES, baseWire, hubFor, skyconeCurrents, skyconeGain, skyconeZ, tableAt } from "./skycone";
 import { buildPack } from "../build";
 import { radiationEligible, s11, simulate } from "../simulate";
 import { partsFor } from "../print";
@@ -307,5 +307,78 @@ describe("coax below the antenna: ferrite, choke tubes or a bare cable", () => {
     expect(worst("skyconecage55", "").swr).toBeLessThan(2.3);
     const half = ANTENNA_BY_ID.skycone7.build({ bands: "1920e6-12800e6", coax: "bare1" });
     expect(half.dims.find((x) => x.label === "Bare cable length (Simulation)")!.value).toBeCloseTo(0.5 * 3e8 / 1920e6, 6);
+  });
+});
+
+describe("wire diameter tables", () => {
+  const IDS = ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55", "skycone40"];
+  const tabs = IDS.map((id) => [id, SKYCONE_TABLES[id]] as const);
+
+  it("every wire cage and S40 has variants on the base grid", () => {
+    for (const [id, t] of tabs) {
+      expect(t.wires!.length, id).toBeGreaterThanOrEqual(id === "skyconecage55" ? 2 : 3);
+      for (const w of t.wires!) {
+        expect(w.r, id).toHaveLength(t.f.length);
+        expect(w.x, id).toHaveLength(t.f.length);
+        expect(w.g, id).toHaveLength(t.f.length);
+        for (const row of w.g) expect(row, id).toHaveLength(t.els.length);
+        expect(w.bare!.r, id).toHaveLength(3);
+        for (const row of [...w.bare!.r, ...w.bare!.x]) expect(row, id).toHaveLength(t.bare!.f.length);
+      }
+    }
+  });
+
+  it("tableAt reproduces each tabulated diameter exactly", () => {
+    for (const [id, t] of tabs) for (const w of t.wires!) {
+      const a = tableAt(t, w.d);
+      expect(a.clamped, id).toBe(false);
+      expect(a.t.r, id).toEqual(w.r);
+      expect(a.t.x, id).toEqual(w.x);
+      expect(a.t.g[10], id).toEqual(w.g[10]);
+      expect(a.t.bare!.r[1], id).toEqual(w.bare!.r[1]);
+    }
+  });
+
+  it("tableAt at the base wire is the base table", () => {
+    for (const [id, t] of tabs) {
+      expect(baseWire(t), id).toBeCloseTo(1e-3, 9);
+      expect(tableAt(t, baseWire(t)).t, id).toBe(t);
+    }
+  });
+
+  it("halfway in log Ø lies between its neighbours", () => {
+    for (const [id, t] of tabs) {
+      const d = Math.sqrt(0.8e-3 * 1e-3), m = tableAt(t, d).t;
+      const lo = t.wires!.find((w) => Math.abs(w.d - 0.8e-3) < 1e-9)!;
+      expect(m, id).not.toBe(t);
+      for (let i = 0; i < t.f.length; i++) {
+        const a = Math.min(lo.r[i], t.r[i]), b = Math.max(lo.r[i], t.r[i]);
+        expect(m.r[i], id).toBeGreaterThanOrEqual(a - 1e-9);
+        expect(m.r[i], id).toBeLessThanOrEqual(b + 1e-9);
+      }
+    }
+  });
+
+  it("outside the range clamps", () => {
+    for (const [id, t] of tabs) {
+      const all = [{ d: baseWire(t), r: t.r }, ...t.wires!], top = all.reduce((a, b) => (b.d > a.d ? b : a));
+      const c = tableAt(t, 10e-3);
+      expect(c.clamped, id).toBe(true);
+      expect(c.t.r, id).toEqual(top.r);
+      expect(tableAt(t, 0.01e-3).clamped, id).toBe(true);
+    }
+  });
+
+  it("bare rows follow the diameter", () => {
+    const t = SKYCONE_TABLES.skyconecage, a = skyconeZ(t, t.fLo, 1.2e9, 1)!, b = skyconeZ(tableAt(t, 0.5e-3).t, t.fLo, 1.2e9, 1)!;
+    expect(Math.abs(a.r - b.r) + Math.abs(a.x - b.x)).toBeGreaterThan(0.1);
+  });
+
+  it("the variant hub follows hubFor", () => {
+    for (const [id, t] of tabs) for (const w of t.wires!) {
+      if (w.hub != null) expect(Math.abs(w.hub - hubFor(16, w.d)), id).toBeLessThan(1e-6);
+      if (t.cage) expect(tableAt(t, w.d).t.cage!.hub, id).toBeCloseTo(hubFor(16, w.d), 9);
+    }
+    expect(hubFor(16, 1e-3)).toBeCloseTo(3e-3, 12);
   });
 });
