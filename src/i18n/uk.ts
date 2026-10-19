@@ -1556,4 +1556,5 @@ export const UK: Record<string, string> = {
   "roller": "ролик",
   "turn over": "переверніть",
   "springback": "пружинення",
+  "drawing": "креслення",
 };

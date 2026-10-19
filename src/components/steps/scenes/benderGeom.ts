@@ -3,6 +3,10 @@
 export const K = 1.6;                  // px per mm: base, stop circle, lever outline
 /** Die bolt end, roller head, stop bolt head radius; wire width and its axis below the die; roller centre below the die. */
 export const DIE_R = 7, ROLL_R = 6, HEAD_R = 8, WIRE_W = 4, WY = 9, ROLL_Y = 20;
+/** Lever bender: the arm's leading edge is ARM_E to the right of the ray from the die, the stop hole STOP_O (= ARM_E − head r)
+ *  so the head touches that edge at the stop's angle. On the part both sit about where the wire lies (head r ≈ wire offset);
+ *  drawn a few px to the die side of the wire so the contact shows beside it. */
+export const ARM_E = 0, STOP_O = ARM_E - HEAD_R;
 /** Stop-hole circle (40 mm). */
 export const SR = 40 * K;
 /** Engraved lines on the lever bender's base: short ones from BASE_R0, long ones (45° steps) from BASE_RL, all to BASE_R1

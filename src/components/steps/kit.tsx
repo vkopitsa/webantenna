@@ -11,7 +11,7 @@ export interface Scene {
   still: number;
   /** viewBox, default "0 0 320 240" */
   view?: string;
-  /** SVG children; animate only through Rot / Move / Fade / Draw so every <animate*> shares the scene's dur */
+  /** SVG children; animate only through Rot / Move / Fade / Draw / ScaleY so every <animate*> shares the scene's dur */
   draw: (t: T) => ReactNode;
 }
 
@@ -499,6 +499,20 @@ export function Rot({ about, values, times, children }: { about: [number, number
     <g>
       <animateTransform attributeName="transform" type="rotate" values={values.map((v) => `${v} ${about[0]} ${about[1]}`).join(";")} {...a} />
       {children}
+    </g>
+  );
+}
+
+/** Scale the children vertically about the line y = `axis` through `values` at `times` (−1 = flipped over that line, as a
+ *  wire turned half a turn about its own axis looks from above). */
+export function ScaleY({ axis, values, times, children }: { axis: number; values: number[]; times: number[]; children?: ReactNode }) {
+  const a = useAnim(times);
+  return (
+    <g transform={`translate(0 ${axis})`}>
+      <g>
+        <animateTransform attributeName="transform" type="scale" values={values.map((v) => `1 ${v}`).join(";")} {...a} />
+        <g transform={`translate(0 ${-axis})`}>{children}</g>
+      </g>
     </g>
   );
 }

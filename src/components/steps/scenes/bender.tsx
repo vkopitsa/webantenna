@@ -4,7 +4,7 @@
 // angles counter-clockwise from +x, engraved lines every 15° beside them. Bolts, the wire and the gaps between them are
 // drawn larger than to scale so they stay readable; positions follow the part.
 import { Bolt, Clip, Rot, Wire, FG } from "../kit";
-import { DEG, DIE_R, f, FLOOR_Z, HD, HEAD_R, HH, HOLE, K, NUT_H, NUT_W, ray, ROLL_R, ROLL_Y, RY, SH, SK, SR, SX, sx, sz, WIRE_W, WY, BASE_R0, BASE_RL, BASE_R1 } from "./benderGeom";
+import { DEG, DIE_R, f, FLOOR_Z, HD, HEAD_R, HH, HOLE, K, NUT_H, NUT_W, ray, ROLL_R, ROLL_Y, RY, SH, SK, SR, SX, sx, sz, WIRE_W, WY, BASE_R0, BASE_RL, BASE_R1, ARM_E, STOP_O } from "./benderGeom";
 
 // ------------------------------------------------------------------ top view
 
@@ -28,7 +28,7 @@ export function LeverBase({ holes = [45, 90, 135] }: { holes?: number[] }) {
     {[45, 10].map((y) => <circle key={y} cx={-80 * K} cy={-y * K} r={3.6} fill="var(--coax)" />)}
     {baseLines()}
     <line x1={0} y1={-14 * K} x2={0} y2={-(SR - 6)} stroke="var(--plastic-edge)" strokeWidth={1.3} />
-    {holes.map((a) => { const [x, y] = ray(a, SR); return <circle key={a} cx={x} cy={y} r={4} fill="var(--coax)" />; })}
+    {holes.map((a) => { const [x, y] = ray(a, SR, STOP_O); return <circle key={a} cx={x} cy={y} r={4} fill="var(--coax)" />; })}
     {/* the block (raised), its groove open on top along the wire */}
     <rect x={-30 * K} y={1} width={15 * K} height={32 * K - 1} fill="var(--plastic)" stroke="var(--plastic-edge)" strokeWidth={1.5} />
     <rect x={-30 * K} y={1} width={15 * K} height={32 * K - 1} fill={FG} opacity={0.08} />
@@ -38,9 +38,9 @@ export function LeverBase({ holes = [45, 90, 135] }: { holes?: number[] }) {
 
 /** Lever outline at rest (hub r 12 mm, handle shortened to 60 mm, arm whose upper edge meets the stop bolt head). */
 const LEVER_D = (() => {
-  const hub = 12 * K, hw = 10 * K, end = 60 * K, ax = 44 * K, ay = HEAD_R + 14 * K, hy = 40 * K;
-  const xs = f(Math.sqrt(hub * hub - HEAD_R * HEAD_R)), ys = f(Math.sqrt(hub * hub - hw * hw));
-  return `M${-hw} ${ys} L${-hw} ${end - 8} Q${-hw} ${end} ${-hw + 8} ${end} L${hw - 8} ${end} Q${hw} ${end} ${hw} ${end - 8} L${hw} ${hy} L${ax} ${f(ay)} L${ax} ${HEAD_R} L${xs} ${HEAD_R} A${hub} ${hub} 0 1 0 ${-hw} ${ys} Z`;
+  const hub = 12 * K, hw = 10 * K, end = 60 * K, ax = 44 * K, ay = ARM_E + 14 * K, hy = 40 * K;
+  const xs = f(Math.sqrt(hub * hub - ARM_E * ARM_E)), ys = f(Math.sqrt(hub * hub - hw * hw));
+  return `M${-hw} ${ys} L${-hw} ${end - 8} Q${-hw} ${end} ${-hw + 8} ${end} L${hw - 8} ${end} Q${hw} ${end} ${hw} ${end - 8} L${hw} ${hy} L${ax} ${f(ay)} L${ax} ${ARM_E} L${xs} ${ARM_E} A${hub} ${hub} 0 1 0 ${-hw} ${ys} Z`;
 })();
 
 /** The lever from above at rest: printed part, engraved line across it at the die's tangent, the roller bolt head. */

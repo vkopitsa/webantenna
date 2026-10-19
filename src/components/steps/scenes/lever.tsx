@@ -8,10 +8,10 @@
 // drawn larger than to scale so they stay readable; positions follow the part.
 import type { ReactNode } from "react";
 import {
-  Appear, Arrow, Bolt, Check, Clip, Fade, Hotend, Label, Mark, Move, PrintBed, PrintLayers, Rot, Wire, FG, type Scene,
+  Appear, Arrow, Bolt, Check, Clip, Fade, Hand, Hotend, Label, Mark, Move, PrintBed, PrintLayers, Rot, ScaleY, Wire, FG, type Scene,
 } from "../kit";
 import { AngleLines, BenderWire, DieBoltSide, DieEnd, Lever, LeverBase, LeverLine, PlateTop, SideBase, SideBolt, SideLever, SideNut } from "./bender";
-import { BASE_R0, BASE_R1, BASE_RL, HD, HEAD_R, HH, NUT_Y, ROLL_R, ROLL_Y, RY, FLOOR_Z, SR, SX, WIRE_W, WY, SK, ray, sx, sz } from "./benderGeom";
+import { ARM_E, STOP_O, BASE_R0, BASE_R1, BASE_RL, HD, HEAD_R, HH, NUT_Y, ROLL_R, ROLL_Y, RY, FLOOR_Z, SR, SX, WIRE_W, WY, SK, ray, sx, sz } from "./benderGeom";
 
 // ------------------------------------------------------------------ print either one
 
@@ -28,7 +28,7 @@ const benderChoice: Scene = {
           <LeverBase />
           <Lever />
           <DieEnd />
-          <Bolt x={0} y={-SR} r={HEAD_R} stop />
+          <Bolt x={ray(90, SR, STOP_O)[0]} y={ray(90, SR, STOP_O)[1]} r={HEAD_R} stop />
         </g>
       </Fade>
       <Fade {...dim(lv)}>
@@ -189,7 +189,7 @@ const leverStop: Scene = {
   dur: 4.5,
   still: 3.9,
   draw: (t) => {
-    const [hx, hy] = ray(90, SR);
+    const [hx, hy] = ray(90, SR, STOP_O);
     return <g transform={`translate(${CX} ${CY})`}>
       <LeverBase />
       <Fade values={[0, 0, 1, 0, 1, 0, 0]} times={[0, 0.06, 0.14, 0.24, 0.32, 0.42, 1]}><AngleLines o={WY} r0={BASE_R0} rLong={BASE_RL} r1={BASE_R1} stroke="var(--accent)" w={2} /></Fade>
@@ -219,14 +219,16 @@ const leverLoad: Scene = {
     </Move>
     <DieEnd />
     <Bolt x={0} y={ROLL_Y} r={ROLL_R} />
-    <Move values={[[-110, 0], [-110, 0], [0, 0], [0, 0]]} times={[0, 0.08, 0.5, 1]}><Mark x={0} y={WY} /></Move>
+    <Move values={[[-110, 0], [-110, 0], [0, 0], [0, 0]]} times={[0, 0.08, 0.5, 1]}>
+      <line x1={0} y1={WY - 4} x2={0} y2={WY + 4} stroke="var(--mark)" strokeWidth={2.5} strokeLinecap="round" />
+    </Move>
     <Fade values={[0, 0, 1, 0, 1, 0, 0]} times={[0, 0.5, 0.53, 0.58, 0.62, 0.67, 1]}><LeverLine stroke="var(--accent)" w={3} /></Fade>
-    <Appear a={0.08}><Arrow d="M-80 -14 L-28 -14" /></Appear>
+    <Appear a={0.08}><Arrow d="M-84 -40 L-30 -40" /></Appear>
     <Label x={-112} y={-24} text={t("wire")} to={[-100, WY - 3]} />
-    <Label x={-24} y={-30} text={t("die")} anchor="end" to={[-5, -5]} />
+    <Label x={24} y={-30} text={t("die")} to={[5, -5]} />
     <Label x={-34} y={70} text={t("roller")} anchor="end" to={[-5, ROLL_Y + 4]} />
     <Appear a={0.5}><Label x={132} y={78} text={t("cut end")} anchor="end" to={[56, WY + 3]} /></Appear>
-    <Appear a={0.5}><Label x={-52} y={36} text={t("mark")} anchor="end" to={[-3, WY + 6]} /></Appear>
+    <Appear a={0.5}><Label x={-62} y={-2} text={t("mark")} anchor="end" to={[-1.5, WY - 1]} /></Appear>
   </g>,
 };
 
@@ -236,62 +238,86 @@ const bendRL: Scene = {
   dur: 5,
   still: 4.4,
   draw: (t) => {
-    // walking from the cut end: right, right, left (as seen on the drawing)
-    const ring = (x: number, y: number, a: number) => <Fade values={[0, 0, 1, 0, 1, 0, 0]} times={[0, a, a + 0.03, a + 0.07, a + 0.1, a + 0.14, 1]}>
-      <circle cx={x} cy={y} r={14} fill="none" stroke="var(--accent)" strokeWidth={2.5} />
-    </Fade>;
-    const ix = 250, iy = 110;
+    // The wire on the bender, held part along y = 120 to the left of the next mark (B3). B1 and B2 are bent already, as
+    // drawn (R, R). The next bend is an L: turn the wire over about its own axis (the bent part flips to the other side of
+    // that line), then bend at B3 the same way as before. Inset: the drawing it follows (R, R, L walking from the cut end).
+    const A = 120, B3 = 120;
+    const bent = `M${B3} ${A} L186 ${A} Q200 ${A} 200 ${A - 14} L200 84 Q200 70 186 70 L150 70`;
+    const ref = (x: number, y: number): [number, number] => [230 + (x - 60) * 0.6, 130 + (y - 120) * 0.6];
+    const [r3, r2, r1] = [ref(120, 120), ref(120, 200), ref(170, 200)];
     return <>
-      <Wire d="M24 60 L132 60 Q150 60 150 78 L150 112 Q150 130 132 130 L78 130 Q60 130 60 148 L60 220" />
-      <Label x={14} y={48} text={t("cut end")} to={[24, 56]} />
-      <Label x={166} y={52} text="R" />
-      <Label x={166} y={148} text="R" />
-      <Label x={40} y={124} text="L" />
-      {ring(150, 60, 0.06)}
-      {ring(150, 130, 0.24)}
-      {ring(60, 130, 0.72)}
-      {/* inset: the wire seen along its axis, the bent part flips to the other side before the L bend */}
-      <rect x={ix - 52} y={iy - 70} width={104} height={140} rx={8} fill="var(--panel)" stroke="var(--muted)" strokeWidth={1.2} />
-      <Rot about={[ix, iy]} values={[0, 0, 180, 180]} times={[0, 0.42, 0.62, 1]}>
-        <Wire d={`M${ix} ${iy} L${ix} ${iy - 50}`} />
+      <Wire d={`M20 ${A} L${B3} ${A}`} />
+      <Rot about={[B3, A]} values={[0, 0, -90, -90]} times={[0, 0.5, 0.68, 1]}>
+        <ScaleY axis={A} values={[1, 1, -1, -1]} times={[0, 0.16, 0.4, 1]}><Wire d={bent} /></ScaleY>
       </Rot>
-      <circle cx={ix} cy={iy} r={6} fill="var(--copper)" stroke={FG} strokeWidth={1} />
-      <Appear a={0.42}><Arrow d={`M${ix + 26} ${iy - 26} A37 37 0 0 1 ${ix + 26} ${iy + 26}`} /></Appear>
-      <Appear a={0.42}><line x1={ix - 52} y1={iy} x2={84} y2={130} stroke="var(--muted)" strokeWidth={1} strokeDasharray="3 3" /></Appear>
-      <Label x={ix} y={iy + 92} text={t("turn over")} anchor="middle" to={[ix + 30, iy + 34]} />
+      <line x1={B3} y1={A - 7} x2={B3} y2={A + 7} stroke="var(--mark)" strokeWidth={2.5} strokeLinecap="round" />
+      {/* as drawn: R, R; they fade as the wire turns over */}
+      <Fade values={[1, 1, 0, 0]} times={[0, 0.14, 0.18, 1]}>
+        <Label x={210} y={66} text="R" />
+        <Label x={210} y={136} text="R" />
+        <Label x={140} y={64} text={t("cut end")} anchor="end" to={[150, 70]} />
+      </Fade>
+      {/* turn over about the wire's own axis, then the L bend at B3 */}
+      <Appear a={0.16}><Arrow d={`M54 ${A - 24} A10 24 0 0 1 54 ${A + 24}`} /></Appear>
+      <Appear a={0.16}><Label x={58} y={A + 46} text={t("turn over")} anchor="middle" /></Appear>
+      <Appear a={0.5}><Arrow d={`M${B3 + 30} ${A - 10} A32 32 0 0 0 ${B3 + 10} ${A - 30}`} /></Appear>
+      <Appear a={0.68}><Label x={B3 + 10} y={A + 18} text="L" /></Appear>
+      {/* the drawing: R, R, L from the cut end */}
+      <rect x={216} y={112} width={100} height={96} rx={6} fill="none" stroke="var(--muted)" strokeWidth={1} strokeDasharray="4 3" />
+      <Wire w={3} d={`M${ref(60, 120).join(" ")} L${ref(106, 120).join(" ")} Q${r3.join(" ")} ${ref(120, 134).join(" ")} L${ref(120, 186).join(" ")} Q${r2.join(" ")} ${ref(134, 200).join(" ")} L${ref(156, 200).join(" ")} Q${r1.join(" ")} ${ref(170, 186).join(" ")} L${ref(170, 150).join(" ")}`} />
+      <Label x={r3[0] + 6} y={r3[1] - 4} text="L" />
+      <Label x={r2[0] - 4} y={r2[1] + 14} text="R" anchor="end" />
+      <Label x={r1[0] + 4} y={r1[1] + 14} text="R" />
+      <Label x={266} y={106} text={t("drawing")} anchor="middle" />
     </>;
   },
 };
 
-// ------------------------------------------------------------------ swing to the stop, press past it, spring back
+// ------------------------------------------------------------------ swing to the stop, press past it by hand, spring back
 
 const leverSwing: Scene = {
   dur: 5,
   still: 4.1,
   draw: (t) => {
-    const OVER = 5, sw: [number[], number[]] = [[0, 0, 90, 90 + OVER, 90 + OVER, 90, 90, 0, 0], [0, 0.1, 0.4, 0.48, 0.54, 0.62, 0.94, 0.97, 1]];
-    const wire: [number[], number[]] = [[0, 0, 90, 90 + OVER, 90 + OVER, 90, 90, 0, 0], [0, 0.1, 0.4, 0.48, 0.56, 0.62, 0.94, 0.97, 1]];
-    const [hx, hy] = ray(90, SR), tk0 = ray(90 + OVER, BASE_RL, WY), tk1 = ray(90 + OVER, BASE_R1, WY);
+    const OVER = 5;
+    const lever: [number[], number[]] = [[0, 0, 90, 90, 0, 0], [0, 0.08, 0.38, 0.94, 0.97, 1]];
+    const wire: [number[], number[]] = [[0, 0, 90, 90, 90 + OVER, 90 + OVER, 90, 90, 0, 0], [0, 0.08, 0.38, 0.5, 0.58, 0.62, 0.68, 0.94, 0.97, 1]];
+    const [hx, hy] = ray(90, SR, STOP_O), [cx, cy] = ray(90, SR, ARM_E);
+    const tk0 = ray(90 + OVER, BASE_RL, WY), tk1 = ray(90 + OVER, BASE_R1, WY), fy = -78, fx = WY + WIRE_W / 2 + 1;
     return <g transform={`translate(${CX} ${CY})`}>
       <LeverBase />
       {/* the reset to the start fades out and back in rather than un-bending the wire */}
       <Fade values={[1, 1, 0, 0, 1]} times={[0, 0.92, 0.94, 0.98, 1]}>
-        <Rot about={[0, 0]} values={sw[0].map((v) => -v)} times={sw[1]}><Lever /></Rot>
+        <Rot about={[0, 0]} values={lever[0].map((v) => -v)} times={lever[1]}><Lever /></Rot>
         <BenderWire from={-150} len={90} swing={wire} />
       </Fade>
       <Mark x={0} y={WY} />
       <DieEnd />
       <Bolt x={hx} y={hy} r={HEAD_R} stop />
-      {/* swing arrow round the handle's end, past the stop */}
-      <Appear a={0.1}><Arrow d={`M${ray(-70, 108)[0]} ${ray(-70, 108)[1]} A108 108 0 0 0 ${ray(-6, 108)[0]} ${ray(-6, 108)[1]}`} /></Appear>
-      <Appear a={0.48}>
+      {/* the lever's edge meets the stop bolt head */}
+      <Fade values={[0, 0, 1, 0, 1, 0, 0]} times={[0, 0.38, 0.4, 0.43, 0.45, 0.48, 1]}>
+        <circle cx={cx} cy={cy} r={6} fill="none" stroke="var(--accent)" strokeWidth={2.5} />
+      </Fade>
+      <Appear a={0.08}><Arrow d={`M${ray(-70, 108)[0]} ${ray(-70, 108)[1]} A108 108 0 0 0 ${ray(-4, 108)[0]} ${ray(-4, 108)[1]}`} /></Appear>
+      {/* a hand presses the free end a few degrees past the line, then lets go */}
+      <Fade values={[0, 0, 1, 1, 0, 0]} times={[0, 0.44, 0.48, 0.92, 0.94, 1]}>
+        <Move values={[[0, 0], [0, 0], [14, 0], [14, 0]]} times={[0, 0.62, 0.68, 1]}>
+          <Rot about={[0, 0]} values={[0, 0, -OVER, -OVER]} times={[0, 0.5, 0.58, 1]}>
+            <g transform={`translate(${fx} ${fy}) scale(0.75)`}><Hand x={0} y={0} rot={180} /></g>
+          </Rot>
+        </Move>
+      </Fade>
+      <Appear a={0.48}><Arrow d={`M46 -46 L18 -46`} /></Appear>
+      <Appear a={0.58}>
         <line x1={tk0[0]} y1={tk0[1]} x2={tk1[0]} y2={tk1[1]} stroke="var(--accent)" strokeWidth={2.5} strokeLinecap="round" />
         <Label x={tk1[0] - 4} y={-95} text={`+${OVER}°`} anchor="end" />
       </Appear>
-      <Appear a={0.56}><Arrow d={`M-34 -78 L2 -78`} /></Appear>
-      <Appear a={0.56}><Label x={-38} y={-74} text={t("springback")} anchor="end" /></Appear>
-      <Label x={-28} y={-24} text={t("stop bolt")} anchor="end" to={[hx - 4, hy + 7]} />
-      <Appear a={0.4}><Label x={120} y={60} text={t("lever")} anchor="end" to={[80, 12]} /></Appear>
+      <Appear a={0.66}><Arrow d={`M-34 -80 L1 -80`} /></Appear>
+      <Appear a={0.66}><Label x={-38} y={-76} text={t("springback")} anchor="end" /></Appear>
+      <Label x={-28} y={-24} text={t("stop bolt")} anchor="end" to={[hx - 3, hy + 7]} />
+      <Label x={-150} y={80} text={t("wire")} to={[-130, WY + 3]} />
+      <Label x={-62} y={96} text={t("die")} anchor="end" to={[-4, 6]} />
+      <Appear a={0.38}><Label x={120} y={60} text={t("lever")} anchor="end" to={[80, 12]} /></Appear>
     </g>;
   },
 };
