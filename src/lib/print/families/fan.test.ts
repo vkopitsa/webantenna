@@ -7,15 +7,13 @@ import { dipoleArms, fanSpreaders } from "./centre";
 import { along, inside, setup } from "./testkit";
 
 let M: ManifoldToplevel;
-/** Part ids without the cut and bend aids (cutbend.ts), which come with any wire antenna that has a bent piece. */
-const ownIds = (specs: { id: string }[]) => specs.map((s) => s.id).filter((id) => !/^(cut-board|bender-)/.test(id));
 beforeAll(async () => { M = await loadManifold(); });
 
 describe("fan dipole", () => {
   it("HF defaults: centre and spreaders build, spreaders fit the bed", () => {
     const { p, d } = setup("fandipole");
     const specs = partsFor("fandipole", p, d);
-    expect(ownIds(specs)).toEqual(["fan-centre", "fan-spreader-1", "fan-spreader-2", "shell"]);
+    expect(specs.map((s) => s.id)).toEqual(["fan-centre", "fan-spreader-1", "fan-spreader-2", "shell"]);
     for (const s of specs) expect(buildPart(M, s, s.id).ok, s.id).toBe(true);
   });
   it("centre channels follow every element's arm", () => {
@@ -46,7 +44,7 @@ describe("fan dipole", () => {
       const { wireD, gap } = dipoleArms(d);
       const specs = partsFor("fandipole", p, d);
       const sp = fanSpreaders(d);
-      expect(ownIds(specs), `${fan}`).toEqual(["fan-centre", ...sp.map((_, i) => `fan-spreader-${i + 1}`), "shell"]);
+      expect(specs.map((s) => s.id), `${fan}`).toEqual(["fan-centre", ...sp.map((_, i) => `fan-spreader-${i + 1}`), "shell"]);
       sp.forEach((s, i) => {
         const tag = `fan ${fan} ${bands.split(";").length} bands spreader ${i + 1}`;
         expect(s.Y, tag).toBeGreaterThanOrEqual(gap / 2 + 35 + 15 - 1e-9);
@@ -63,7 +61,7 @@ describe("fan dipole", () => {
   }, 120000);
   it("a single band has no spreaders", () => {
     const { p, d } = setup("fandipole", { bands: "14e6-14.35e6" });
-    expect(ownIds(partsFor("fandipole", p, d))).toEqual(["fan-centre", "shell"]);
+    expect(partsFor("fandipole", p, d).map((s) => s.id)).toEqual(["fan-centre", "shell"]);
   });
   it("channels stay clear at wide fans with five bands, and the eye and zip slots survive", () => {
     const bands = "3.5e6-3.8e6;7e6-7.2e6;10.1e6-10.15e6;14e6-14.35e6;18e6-18.2e6";

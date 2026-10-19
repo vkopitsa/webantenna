@@ -55,11 +55,12 @@ function startAtFeed(bp: BendPath, d: Design): BendPath {
   return { ...bp, pts };
 }
 
-/** Bend recipes of the design's wire pieces (one per distinct shape, `qty` copies); [] for sky-cone types. */
-export function bendRecipes(def: AntennaDef, p: Params, d: Design): Recipe[] {
+/** Bend recipes of the design's wire pieces (one per distinct shape, `qty` copies); [] for sky-cone types.
+ *  `trimmed` = the tags of `tuning(def, p, d).rows`, when the caller has them already (tuning rebuilds the design). */
+export function bendRecipes(def: AntennaDef, p: Params, d: Design, trimmed?: Set<string>): Recipe[] {
   // sky-cone types have their own kit; d.cuts replaces the wire pieces by a table, and printed antennas have no bent wire
   if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
-  const trimmed = new Set(tuning(def, p, d).rows.map((r) => r.tag));
+  trimmed ??= new Set(tuning(def, p, d).rows.map((r) => r.tag));
   const pcs = pieces(d), rows = cutList(def, d, trimmed);
   const out: Recipe[] = [], sigs: string[] = [];
   for (const bp0 of bendPaths(d)) {

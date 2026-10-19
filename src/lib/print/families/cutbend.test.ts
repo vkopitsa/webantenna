@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Params } from "../../types";
 import { loadManifold } from "../manifold";
@@ -9,6 +9,7 @@ import { buildPack } from "../../build";
 import { bendRecipes, dieFor } from "../../recipe";
 import { benderGeometry, benderLever, benderPlate, boardHoles, cutBendParts, cutBoards, CUTBEND_HOWTO, CUTBEND_STRINGS, leverSolids, type Hole } from "./cutbend";
 import { partsFor } from "..";
+import { bendPaths, CORNER } from "../paths";
 import { along, ball, inside, setup } from "./testkit";
 
 let M: ManifoldToplevel;
@@ -145,5 +146,48 @@ describe("benders", () => {
     expect(k).toBeGreaterThan(0);
     expect(spec.howTo[k].a).toEqual([3, { len: 0.1 }, 1]);
     expect(spec.howTo[k + 1]).toEqual(msg("Wire"));
+  });
+});
+
+describe("no bend at a feed terminal", () => {
+  // every wire family in FAMILIES at defaults (and the variants that bend wire); a bend may sit on a feed terminal only where
+  // the wire passes it (exactly two wires there: the biquad's second crossing), never where arms of several elements meet
+  const cases: [string, Params][] = [
+    ["moxon", {}], ["quad", {}], ["biquad", {}], ["jpole", {}], ["yagi", { driven: "folded" }], ["yagi", { driven: "folded", d: 0.002 }],
+    ["cloverleaf", {}], ["groundplane", {}], ["dipole", { droop: 30 }], ["discone", {}], ["collinear", {}], ["spring", {}],
+    ["fandipole", {}], ["fandipole", { fan: 5, bands: "7e6-7.2e6;14e6-14.35e6;28e6-29.7e6" }],
+  ];
+  it.each(cases)("%s %j", (id, extra) => {
+    const { d } = setup(id, extra), near = (a: number[], b: number[]) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1e-6;
+    const feeds = d.wires.filter((w) => w.group === "feed" && !w.necOnly).flatMap((w) => [w.a, w.b]);
+    const ws = d.wires.filter((w) => w.group !== "feed" && !w.necOnly && !w.drawOnly);
+    let onFeed = 0;
+    for (const bp of bendPaths(d)) {
+      const n = bp.pts.length, m = (p: number[]) => p.map((c) => c / 1000);
+      for (let i = 1; i < (bp.closed ? n : n - 1); i++) {   // a closed loop starts at its feed terminal and is cut there
+        const a = bp.pts[(i + n - 1) % n], b = bp.pts[i], c = bp.pts[(i + 1) % n];
+        const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - b[0], c[1] - b[1], c[2] - b[2]];
+        const turn = Math.acos(Math.max(-1, Math.min(1, (u[0] * v[0] + u[1] * v[1] + u[2] * v[2]) / (Math.hypot(...u) * Math.hypot(...v))))) * 180 / Math.PI;
+        if (turn <= CORNER || !feeds.some((f) => near(f, m(b)))) continue;
+        onFeed++;
+        expect(ws.filter((w) => near(w.a, m(b)) || near(w.b, m(b))).length, `${id} vertex ${i}`).toBe(2);
+      }
+    }
+    expect(onFeed).toBe(id === "biquad" ? 1 : 0);
+    if (id === "fandipole") expect(bendRecipes(ANTENNA_BY_ID[id], setup(id, extra).p, d).filter((r) => r.bends.length)).toEqual([]);
+  });
+});
+
+describe("partsFor stays cheap", () => {
+  it("5-band fan dipole: one rebuild of the design (the tuning) at most, none when asked again for the same design", () => {
+    const def = ANTENNA_BY_ID.fandipole, { p, d } = setup("fandipole", { bands: "3.5e6-3.8e6;7e6-7.2e6;10.1e6-10.15e6;14e6-14.35e6;18e6-18.2e6" });
+    const spy = vi.spyOn(def, "build");
+    try {
+      partsFor("fandipole", p, d);
+      expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
+      spy.mockClear();
+      partsFor("fandipole", p, d);
+      expect(spy.mock.calls.length).toBe(0);
+    } finally { spy.mockRestore(); }
   });
 });

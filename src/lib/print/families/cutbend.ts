@@ -22,7 +22,7 @@ export const CUTBEND_STRINGS = [
   "Bending plate",
   "Plate for bending {0} wire by hand round a {1} bolt up to a stop bolt; stop holes at {2}°.",
   "Die and roller: two {0} × 30 mm bolts and one {0} nut",
-  "Stop: one {0} × 12 mm bolt",
+  "Stop: one {0} × 8 mm bolt",
   "Die, trap pin and stop: three {0} × 16 mm countersunk bolts",
 ];
 
@@ -39,8 +39,8 @@ export const CUTBEND_HOWTO: { board: string[]; lever: string[]; plate: string[] 
     "Print the base standing on its long edge (the one with the tab and the block) and the lever flat; neither needs supports.",
     "Push the nut into the hexagon on top of the base, screw the die bolt up through it from below and slide the lever onto the die.",
     "Drop the roller bolt into the other hole of the lever, head up: its tip rests on the base.",
-    "Clamp the tab in a vise, or screw the base down through its two holes with the tab over the edge of the bench.",
-    "Put the stop bolt, head down, into the hole for the bend angle: the stop holes sit at the recipe angles on the engraved lines (every 15°, longer at 45°, 90°, 135° and 180°), and the lever stops against the bolt head.",
+    "Clamp the tab in a vise: the head of the die bolt sticks out under the base, so it does not lie flat on a bench.",
+    "Drop the stop bolt into the hole for the bend angle, head up, so the head rests on the base: the stop holes sit at the recipe angles on the engraved lines (every 15°, longer at 45°, 90°, 135° and 180°), and the lever stops against the bolt head.",
     "Lay the wire on the lever through the groove in the block, between the die and the roller, with the cut end on the far side of the die and the mark on the engraved line across the lever.",
     "B1 is the mark nearest the cut end: bend in order from that end, then push the wire on to the next mark.",
     "Bends marked R are made with the wire as drawn; turn the wire over (about its own axis) before each bend marked L.",
@@ -200,7 +200,7 @@ export function leverSolids(M: M, g: BenderGeom): { base: Manifold; lever: Manif
   const arm = M.Manifold.hull([box(M, [0, -headR - 14, BASE_T], [STOP_R + 4, -headR, top]), box(M, [-10, -40, BASE_T], [10, -headR, top])]);
   const lever = M.Manifold.union([hub, handle, arm]).subtract(M.Manifold.union([
     zHole(M, 0, 0, die.hole, BASE_T, top, false), zHole(M, g.roller[0], g.roller[1], die.hole, BASE_T, top, false),
-    line(M, [g.tangentX, die.hole / 2 + 1], [g.tangentX, 10], top),
+    line(M, [g.tangentX, die.hole / 2 + 0.6], [g.tangentX, 10], top),
     line(M, [g.tangentX, g.roller[1] - die.hole / 2 - 1], [g.tangentX, g.roller[1] - die.hole / 2 - 8], top),
   ]));
   return { base, lever, wireZ: top + d / 2 };
@@ -245,7 +245,7 @@ function plate(M: M, g: BenderGeom): Manifold {
   const x1 = xt - r - 2, x0 = x1 - 15, bTop = T + w + 2;
   let s = box(M, [-48, -42, 0], [48, 48, T]).subtract(M.Manifold.union([
     ...scale(M, r + dw / 2, 18, 14, 30, T),
-    line(M, [g.tangentX, yw - w / 2 - 1], [g.tangentX, -36], T), line(M, [g.tangentX, die.hole / 2 + 1], [g.tangentX, 12], T),
+    line(M, [g.tangentX, -die.hole / 2 - 0.3], [g.tangentX, -36], T), line(M, [g.tangentX, die.hole / 2 + 1], [g.tangentX, 12], T),
   ]));
   s = s.add(box(M, [x0, yw - w / 2 - 6, T], [x1, yw + w / 2 + WALL, bTop]));
   return s.subtract(M.Manifold.union([
@@ -254,12 +254,18 @@ function plate(M: M, g: BenderGeom): Manifold {
   ]));
 }
 
+const CACHE = new WeakMap<Design, PartSpec[]>();
+
 /** Cut board(s) for the straight and bent pieces ≤ 170 mm, plus one lever bender and one bending plate per die bolt among
- *  the bent pieces of wire ≤ D_MAX; [] for sky-cone types (their own kit) and printed antennas. */
+ *  the bent pieces of wire ≤ D_MAX; [] for sky-cone types (their own kit) and printed antennas. Memoised per Design:
+ *  the tuning (one rebuild of the design) runs once, however many panels ask. */
 export function cutBendParts(def: AntennaDef, p: Params, d: Design): PartSpec[] {
   if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
-  const recipes = bendRecipes(def, p, d);
-  const holes = boardHoles(cutList(def, d, new Set(tuning(def, p, d).rows.map((r) => r.tag))), recipes);
+  const hit = CACHE.get(d);
+  if (hit) return hit;
+  const trimmed = new Set(tuning(def, p, d).rows.map((r) => r.tag));
+  const recipes = bendRecipes(def, p, d, trimmed);
+  const holes = boardHoles(cutList(def, d, trimmed), recipes);
   const out = holes.length ? cutBoards(holes) : [];
   const bent = recipes.filter((r) => r.die && r.bends.length);
   for (const bolt of [...new Set(bent.map((r) => r.die!.bolt))].sort()) {
@@ -267,5 +273,6 @@ export function cutBendParts(def: AntennaDef, p: Params, d: Design): PartSpec[] 
     const g = benderGeometry(rs[0].die!, Math.max(...rs.map((r) => mm(r.dia))), rs.flatMap((r) => r.bends.map((b) => b.angle)));
     out.push(benderLever(g), benderPlate(g));
   }
+  CACHE.set(d, out);
   return out;
 }

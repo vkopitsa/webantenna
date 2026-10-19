@@ -19,10 +19,15 @@ export function bendPaths(d: Design): BendPath[] {
   const k2 = (i: number, p: number[]) => `${kind(es[i])}@${key(p)}`;
   const orig = d.wires.map((w, i) => ({ w, i })).filter(({ w }) => w.group !== "feed" && !w.necOnly && !w.drawOnly && len(w) > 0).map(({ i }) => i);   // es index → d.wires index
   es.forEach((w, i) => { for (const p of [w.a, w.b]) (at.get(k2(i, p)) ?? at.set(k2(i, p), []).get(k2(i, p))!).push(i); });
+  // a feed terminal where other wires meet too (a fan dipole's arms) is a junction, whatever their group: the wires end
+  // there; a wire that only passes the terminal (a biquad's second crossing) runs on through it
+  const deg = new Map<string, number>();
+  es.forEach((w) => { for (const p of [w.a, w.b]) deg.set(key(p), (deg.get(key(p)) ?? 0) + 1); });
+  const junction = new Set(feedEnds.filter((k) => (deg.get(k) ?? 0) > 2));
   const used = new Set<number>(), out: BendPath[] = [];
   const other = (i: number, k: string) => (key(es[i].a) === k ? es[i].b : es[i].a);
   /** The wire that continues past node k from wire i (null at a free end or a junction). */
-  const next = (i: number, k: string) => { const js = at.get(`${kind(es[i])}@${k}`)!; return js.length === 2 ? js.find((j) => j !== i) ?? i : null; };
+  const next = (i: number, k: string) => { const js = at.get(`${kind(es[i])}@${k}`)!; return js.length === 2 && !junction.has(k) ? js.find((j) => j !== i) ?? i : null; };
   es.forEach((w0, i0) => {
     if (used.has(i0)) return;
     // back up to the start of the chain; coming round to i0 again means a closed loop
