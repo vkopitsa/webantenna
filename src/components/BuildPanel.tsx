@@ -115,6 +115,7 @@ export function BuildPanel({ def, params, design }: { def: AntennaDef; params: P
       <div className="box">
         <h3>{t("Build steps")}</h3>
         <StepList items={pack.steps} />
+        <p className="hint"><a href="?stepgallery" target="_blank" rel="noopener">{t("All step pictures")}</a></p>
       </div>
     </div>
   );

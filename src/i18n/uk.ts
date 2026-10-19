@@ -215,6 +215,7 @@ export const UK: Record<string, string> = {
   "Antenna and parameters": "Антена та параметри",
   "Close": "Закрити",
   "Enlarge picture": "Збільшити малюнок",
+  "All step pictures": "Усі малюнки кроків",
   "Formulas give a starting point. Build slightly long, measure with an antenna analyser or VNA, then trim.": "Формули дають відправну точку. Зробіть трохи довше, виміряйте антенним аналізатором або VNA, потім підріжте.",
   "inch": "дюйми",
   "Auto": "Авто",
