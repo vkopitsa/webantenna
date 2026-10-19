@@ -53,12 +53,17 @@ src/lib/                 NO DOM, NO React, NO i18n. Runs in Node (tests) and in 
                          model (simulate.ts pcbCollinearSim, idealcurrents branch, axis = board y); the transposed-microstrip COCO was tried and dropped (FDTD: 1.2 dBi broadside, docs/ANTENNAS.md)
   build.ts               build pack: pieces() chains wires into physical parts; BOM, cut list, tuning sensitivity
                          (rebuild at +1 % frequency), substrate notes, steps, advise() for measured .s1p
+  recipe.ts              bend recipes per bent piece (follows cut-list pieces; closed loops start at the feed): cut length, bend marks B1…Bn
+                         (at = metres from the cut end to the bend arc start, die = steel bolt via dieFor, radius ≥ max(1.5 mm, Ø)); Ø > 3 mm marks at
+                         the sharp vertex; skycone / d.cuts / d.pcb none. Table in BuildPanel; 1:1 strips in template.ts (recipeDrawings)
   fab.ts zip.ts          Gerber RS-274X X2 / Excellon / DXF R12 / README in a stored zip (Protel extensions)
   print/                 3D-printable parts (manifold-3d CSG, mm): rules.ts fixed geometry rules, shapes.ts blocks,
                          parts.ts PartSpec/buildPart (watertight, ≤ 180 mm), families/*.ts per antenna, stl.ts writer
                          families/former.ts (helix tube/frame, twisted groove, keyed stacking), spreader.ts, standoff.ts, spacer.ts
-  print/paths.ts         planar bent wires from Design.wires → ordered paths, groove outlines, corner signatures
+  print/paths.ts         planar bent wires from Design.wires → ordered paths (stop at feed junctions), groove outlines, corner signatures
   print/families/bend.ts bend plates + corner jigs (quad, Moxon, biquad, Yagi, cloverleaf) and the spring's coil mandrel, from Design.wires
+  print/families/cutbend.ts cut board (one blind hole per cut length ≤ 170 mm, engraved numbers, slits at the bend marks), lever bender A
+                         (W-10 style, bolt die + roller, stop bolts at the design's angles) and bending plate B; cutBendParts() memoised per Design
   print/shells/          one `shell` part per antenna: geometry.ts (envelope, style, exits), clamshell.ts, dome.ts, hood.ts (feedpoint hood), pcbbox.ts,
                          index.ts (shellFor)
   drawing.ts template.ts page model in mm → PDF (own writer, Helvetica, A4) and SVG; PCB, boom strip, wire and helix templates
