@@ -79,6 +79,10 @@ src/print.worker.ts      loads manifold.wasm and builds the parts; a fresh worke
                          its bindings, terminating frees it); usePrintParts.ts, PrintPanel.tsx, MeshView.tsx
 src/sim.worker.ts        runs simulate() and synthesize() off the main thread; useSimulation.ts / useSynthesis.ts
 src/hover.ts             shared highlight (hover ?? pinned): Dimensions/Elements rows, wires, sidebar params → Preview
+src/components/steps/    build-step pictures: looping SVG scenes (SMIL, 3-5 s, fixed colour tokens); StepList (picture 140 px left, above < 600 px, text-only rows when no scene),
+                         StepPic (lazy scenes chunk; runs only on screen, still under reduced motion, tap/Enter enlarges), kit.tsx (Timed, parts),
+                         registry.ts (STEP_PICS: step text → scene id, DONE_GROUPS), scenes/{wire,board,cutboard,lever,plate,bender}.tsx, benderGeom.ts;
+                         Gallery.tsx = review page at ?stepgallery
 src/components/dims.ts   Preview helpers: dimension-line layout (Dim.at spans, "Dimensions" toggle), zoom/pan math
 src/lib/affects.ts       which wires/plates a parameter moves (rebuild with the param nudged, diff), for the sidebar highlight
 src/store.ts             state via useSyncExternalStore; localStorage "antgen.settings.v1"; share hash #t=…&bands=…
@@ -115,6 +119,7 @@ tools/wideband-antenna/  Python (numba) body-of-revolution MoM + FDTD, DE optimi
   - Messages with numbers are `Msg { s, a }`: the key has `{0}` placeholders and the arguments are typed
     (`{ len }` metres, `{ hz }`, `{ pct }`), so the UI can format units. `en()` renders them in English for files.
   - PDF text is English only (Helvetica/WinAnsi); `drawing.ts` spells out Greek letters. Keep new characters in `SUB`/`WIN`.
+- **Step pictures:** new step sentences go in `STEP_TEXT` (build.ts); register a scene for a step in `steps/registry.ts` (`STEP_PICS`) and claim its group in `DONE_GROUPS`; review new scenes in `?stepgallery`. Drawings are generic how-to views, never the design's geometry.
 - **i18n:** the key is the exact English text. `src/i18n.test.ts` enforces UK coverage and no stale keys. When you add a conditional label, add a variant to `VARIANTS` there.
 - **TypeScript:** `erasableSyntaxOnly` is on, so no enums and no parameter properties.
 - **Wire flags:**
