@@ -100,6 +100,9 @@ export interface Design {
     hot: [number, number][]; ground: [number, number][]; n: number; hoops: { hot: [number, number][]; ground: [number, number][] };
     short?: { hot: [number, number]; ground: [number, number]; frame: number; coil: boolean; cap?: number }[];
     pinCap?: number;
+    /** A thick wire's hot washer, dished: flat to radius r at height z (the pin gap), then rising to the frames' start
+     *  (hot[0], the hub ring). Absent when the washer is flat. */
+    dish?: { r: number; z: number };
   };
   /** Sky-tilted bicones: what goes on the coax below the ground cone (ferrite bead, 6-bead ferrite sleeve, metal choke
    *  tubes of diameter d and length len in metres, or nothing) and, with nothing, the bare-cable row of the table that

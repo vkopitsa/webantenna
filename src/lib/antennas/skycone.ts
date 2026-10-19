@@ -45,7 +45,8 @@ export interface SkyconeTable {
    *  R and X (Ω) at the coax end per length. */
   bare?: { lensLam: number[]; f: number[]; r: number[][]; x: number[][] };
   /** Re-solved at other wire diameters (reference scale, m), on the base table's f / bare.f grids; the base table is
-   *  its own wire (2·cage.r, or 2·short.r for S40). hub: the hub ring radius used (m), only when above the 3 mm floor. */
+   *  its own wire (2·cage.r, or 2·short.r for S40). hub: the hub ring radius the solve used (m, rounded),
+   *  only when above the 3 mm floor; informational only: tableAt() and the geometry take the hub from hubFor(). */
   wires?: { d: number; hub?: number; r: number[]; x: number[]; g: number[][]; bare?: { r: number[][]; x: number[][] } }[];
 }
 
@@ -361,8 +362,9 @@ type P2 = [number, number];
  *  ground cone and skirt (points inside 2.5 mm are the coax). Then each end on the axis moves out to the hub ring.
  *  hub: the hub ring radius (m, reference scale). Above the table's own hub (thick wire) the frames are cut where they
  *  cross that radius, as the NEC tables do (wirecage.py `_hubbed`, family10.py `hub_cut`), and an open lid whose hole
- *  is inside it ends on a ring of the hub radius. */
-export function cageFrames(t: SkyconeTable, s: number, hub = t.cage!.hub): { hot: P2[]; ground: P2[]; hubs: [P2, P2][] } {
+ *  is inside it ends on a ring of the hub radius. edge: the washer's own radius (the flat start of the hot frame at the
+ *  washer height, before the hub cut), the flat centre of a dished thick-wire washer. */
+export function cageFrames(t: SkyconeTable, s: number, hub = t.cage!.hub): { hot: P2[]; ground: P2[]; hubs: [P2, P2][]; edge: number } {
   const thick = hub > t.cage!.hub * (1 + 1e-9);
   const push = (out: P2[], q: P2) => { const l = out[out.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) > 1e-5 * s) out.push(q); };
   const hot: P2[] = [[0, t.gap * s]];
@@ -376,6 +378,9 @@ export function cageFrames(t: SkyconeTable, s: number, hub = t.cage!.hub): { hot
       hot.splice(k + 1, hot.length, ...(w > 1e-6 ? [[hub * s, a[1] + w * (c[1] - a[1])] as P2] : []));
     }
   }
+  let e = 0;
+  while (e + 1 < hot.length && Math.abs(hot[e + 1][1] - hot[0][1]) < 1e-5 * s) e++;
+  const edge = hot[e][0];
   const ground: P2[] = [[0, 0]];
   for (const pl of t.lower) for (const q of pl) if (q[0] > 2.5e-3) push(ground, [q[0] * s, q[1] * s]);
   const R = hub * s, hubs: [P2, P2][] = [];
@@ -401,7 +406,7 @@ export function cageFrames(t: SkyconeTable, s: number, hub = t.cage!.hub): { hot
     }
     return out;
   };
-  return { hot: hubbed(hot), ground: hubbed(ground), hubs };
+  return { hot: hubbed(hot), ground: hubbed(ground), hubs, edge };
 }
 
 /** Hoops: every frame point at ρ ≥ 4 mm (scaled) and the hub rings. */
@@ -525,6 +530,9 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
   const hoops = [...seats.hot.map((q) => ({ q, what: "Hoop, hot side" })), ...seats.ground.map((q) => ({ q, what: "Hoop, ground side" }))];
   const hubHot = fr.hubs.find((h) => h[0][1] > 0), hubGnd = fr.hubs.find((h) => h[0][1] <= 0);
   const washerD = 2 * Math.max(hubHot ? hubHot[1][0] : 0, hotF[0][0]);
+  // a thick wire's hub ring past the washer edge sits on the cone, above the pin gap: the washer is dished, flat round
+  // the pin at g and rising to the frames' start (as the tables model it: the ring raised on the hub spokes)
+  const dish = hubHot && hotF[0][1] > g + 1e-5 * s && fr.edge < hotF[0][0] ? { r: fr.edge, z: g } : undefined;
   const SHORT = "Shorting wire (hot frame to the ground frame under it)";
   const cuts: NonNullable<Design["cuts"]> = [
     { what: "Hot frame (bend over the template)", qty: n, length: pathLen(hotF), dia: 2 * r, note: "Bends: see the template" },
@@ -556,7 +564,14 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
       columns: [{ label: "Part", kind: "text" }, { label: "Diameter", kind: "len" }, { label: "Height above the coax end", kind: "len" }, { label: "Wire length", kind: "len" }],
       rows: hoops.map(({ q, what }) => [what, 2 * q[0], q[1], 2 * Math.PI * q[0]]),
     },
-    {
+    dish ? {
+      title: "Hub washers (where the frames meet the axis)",
+      columns: [{ label: "Part", kind: "text" }, { label: "Outer diameter", kind: "len" }, { label: "Hole diameter", kind: "len" }, { label: "Height above the coax end", kind: "len" }, { label: "Flat centre diameter", kind: "len" }, { label: "Rim height above the coax end", kind: "len" }],
+      rows: [
+        ["Hot washer, dished (on the centre pin)", washerD, 1.0e-3, g, 2 * dish.r, hotF[0][1]],
+        ...(hubGnd ? [["Ground collar (on the coax jacket)", 2 * hubGnd[1][0], 2 * COAX_R + 0.1e-3, hubGnd[1][1], 2 * hubGnd[1][0], hubGnd[1][1]]] : []),
+      ],
+    } : {
       title: "Hub washers (where the frames meet the axis)",
       columns: [{ label: "Part", kind: "text" }, { label: "Outer diameter", kind: "len" }, { label: "Hole diameter", kind: "len" }, { label: "Height above the coax end", kind: "len" }],
       rows: [
@@ -572,6 +587,7 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
       hot: hotF, ground: gndF, n, hoops: seats,
       ...(sh && hotN && gndN ? { short: Array.from({ length: sh.n }, (_, j) => ({ hot: hotN.q, ground: gndN.q, frame: sh.frame + (j * n) / sh.n, coil: turns > 0, ...(sh.cap && j % 2 === 1 ? { cap: sh.cap } : {}) })) } : {}),
       ...(t.cage!.pinCap ? { pinCap: t.cage!.pinCap } : {}),
+      ...(dish ? { dish } : {}),
     },
     feed: { wire: 0, at: "center" },
     dims: [

@@ -5,7 +5,9 @@ trim, nec_order), so the committed tables stay reproducible. No NEC solve.
   python check_d1_wires.py --print    prints the hashes (REF was made with the code of commit 61caeb7, before the change)
 Hash: sha256 of the (a xyz, b xyz, radius) of every wire in model order, rounded to 1e-9 m; kinds are left out
 (wirecage now labels frame 0 "frame0"). S40 is hashed twice: the plain family-10 list and the sheetgrid list the
-app table uses (NGRID 32, DR 1.8 mm)."""
+app table uses (NGRID 32, DR 1.8 mm).
+Also checks that no design draws the same wire twice (same end points) at its thickest table: Ø1.5 mm (A55: Ø0.8 mm,
+it has no Ø1.5 table). At Ø1.5 the W16 hub ring (4.2 mm) once came out twice, as the hub and as a path ring."""
 import os
 import sys
 import json
@@ -28,8 +30,23 @@ def digest(wires):
     return hashlib.sha256(json.dumps(rows).encode()).hexdigest()[:16], len(rows)
 
 
+DUP_D = {"W16": 1.5e-3, "W65": 1.5e-3, "W40": 1.5e-3, "B44f": 1.5e-3, "A55": 0.8e-3, "S40": 1.5e-3, "S40grid": 1.5e-3}
+
+
+def duplicates(wires):
+    """number of wires drawn twice: the same two end points (either direction, rounded to 1e-7 m)"""
+    key = lambda w: tuple(sorted(tuple(round(v, 7) for v in q) for q in w[1:3]))
+    seen, dups = set(), 0
+    for w in wires:
+        k = key(w)
+        dups += k in seen
+        seen.add(k)
+    return dups
+
+
 def one(name):
-    """wire list of one design in this process (the env is set by the caller): (hash, count, order is identity)"""
+    """wire list of one design in this process (the env is set by the caller): (hash, count, order is identity,
+    duplicate wires)"""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     if name == "W16":
         import wirecage as W
@@ -37,7 +54,7 @@ def one(name):
         p = json.load(open("designs/W16.json"))
         p = p.get("p", p)
         if hasattr(W, "wire_list"):
-            wires = W.wire_list(family6, p, 16, 0.5e-3)
+            wires = W.wire_list(family6, p, 16, float(os.environ.get("RWIRE", "0.5e-3")))
         else:                                   # pre-change wirecage: the list only comes out of a NEC run
             info = {}
             W.model(family6, p, 3e9, 16, 0.5e-3, per=30, info=info)
@@ -65,7 +82,7 @@ def one(name):
     except ImportError:                         # pre-change code: no reordering at all
         ident = True
     h, n = digest(wires)
-    return h, n, ident
+    return h, n, ident, duplicates(wires)
 
 
 def main():
@@ -84,11 +101,25 @@ def main():
             print(f"{name}: failed\n{out.stderr}")
             bad += 1
             continue
-        h, n, ident = json.loads(out.stdout.strip().splitlines()[-1])
-        ok = ident and (show or REF[name] == h)
+        h, n, ident, dups = json.loads(out.stdout.strip().splitlines()[-1])
+        ok = ident and not dups and (show or REF[name] == h)
         bad += not ok
-        print(f"{name:8s} {n:4d} wires  hash {h}  nec_order identity {ident}"
+        print(f"{name:8s} {n:4d} wires  hash {h}  nec_order identity {ident}  duplicates {dups}"
               + ("" if show else f"  ref {REF[name]}  {'OK' if ok else 'FAIL'}"))
+    from wire_variant import hub_for
+    for name, extra in ENV.items():                               # no wire drawn twice at the thickest table
+        d = DUP_D[name]
+        env = {k: v for k, v in os.environ.items() if k not in ("SIZE", "FLO", "NGRID", "NCAGE", "DR", "SEG", "RGRID")}
+        env.update(RWIRE=f"{d / 2:g}", HUB_R=f"{hub_for(d):g}", **extra)
+        out = subprocess.run([sys.executable, os.path.abspath(__file__), "--one", name], cwd=here, env=env,
+                             capture_output=True, text=True)
+        if out.returncode:
+            print(f"{name} at {d * 1e3:g} mm: failed\n{out.stderr}")
+            bad += 1
+            continue
+        _, n, _, dups = json.loads(out.stdout.strip().splitlines()[-1])
+        bad += dups > 0
+        print(f"{name:8s} at {d * 1e3:g} mm {n:4d} wires  duplicates {dups}  {'OK' if not dups else 'FAIL'}")
     if not show:
         print("OK" if not bad else f"{bad} FAIL")
     sys.exit(1 if bad else 0)

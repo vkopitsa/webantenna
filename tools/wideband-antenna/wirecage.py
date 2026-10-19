@@ -92,8 +92,9 @@ def wire_list(fam, p, n, r, rings=True, axis=True, hub=4, hoop=0.0):
         for t in ang:
             for a, b in zip(cut, cut[1:]):
                 wire(xyz(a, t), xyz(b, t), r, "frame0" if t == 0 else "frame")
-        ring_r = [q for q in cut if q[0] >= 4e-3] if rings else []
-        for q in ring_r + [hq for _, hq in h]:
+        hub_pts = [hq for _, hq in h]            # hub rings are drawn once below, so keep them out of ring_r
+        ring_r = [q for q in cut if q[0] >= 4e-3 and q not in hub_pts] if rings else []   # (HUB_R >= 4 mm above Ø1.4)
+        for q in ring_r + hub_pts:
             chord = 2 * q[0] * math.sin(math.pi / n)
             for k in range(n):
                 wire(xyz(q, ang[k]), xyz(q, ang[(k + 1) % n]), min(r, chord / 4), "ring")

@@ -341,7 +341,9 @@ export function skyconeParts(d: Design, sheetT = 0.3, sleeve = false): PartSpec[
       id: "skycone-cradle", title: SKYCONE_STRINGS[23], use: "jig", qty: 1, purpose: msg(SKYCONE_STRINGS[24]), howTo: SKYCONE_HOWTO.cradle.map((s) => msg(s)),
       build: (M) => {
         // solid under the hot cones (the frames half sunk in their grooves), hollowed from below, standing on a flat base
-        const z0 = g.cones[0][1], zTop = g.cones[g.cones.length - 1][1], Rout = g.Ru + 5, zb = z0 - 4, T = 6;
+        // a dished washer (thick wire): its flat centre at the pin gap, below the frames' start z0
+        const dish = cage.dish ? { r: mm(cage.dish.r), z: mm(cage.dish.z) } : null;
+        const z0 = g.cones[0][1], zTop = g.cones[g.cones.length - 1][1], Rout = g.Ru + 5, zb = Math.min(z0, dish ? dish.z : z0) - 4, T = 6;
         const surf: Pt[] = [[0, z0], ...g.cones].map(([r, z]): Pt => [r, z - 0.1]);
         let body = revolve(M, [[0, zb], [Rout, zb], [Rout, zTop - 0.1], ...surf.slice().reverse()]);
         const rc0 = Math.max(6, g.cones[0][0] + 3), rc1 = g.Ru - 1, top = (r: number) => interp(g.cones, r) - 0.1 - T;
@@ -355,7 +357,12 @@ export function skyconeParts(d: Design, sheetT = 0.3, sleeve = false): PartSpec[
           ...Array.from({ length: 13 }, (_, j): Pt => [r + w * Math.cos(Math.PI + (Math.PI * j) / 12), z + w * Math.sin(Math.PI + (Math.PI * j) / 12)]),
           [r + w, zTop + 10], [r - w, zTop + 10],
         ]));
-        const washer = M.Manifold.cylinder(10, g.walk[0][0] + CLEAR, g.walk[0][0] + CLEAR, 48).translate([0, 0, z0 - wireD / 2 - 0.8]);
+        // the washer pocket, its floor under the washer: flat, or for a dished washer flat round the pin at the gap and
+        // rising to the rim at the frames' start, so the rim rests at z0 and the centre at the gap
+        const wo = wireD / 2 + 0.8, Rw = g.walk[0][0] + CLEAR;
+        const washer = dish
+          ? revolve(M, [[0, dish.z - wo], [dish.r, dish.z - wo], [Rw, z0 - wo], [Rw, z0 - wo + 10], [0, z0 - wo + 10]])
+          : M.Manifold.cylinder(10, Rw, Rw, 48).translate([0, 0, z0 - wo]);
         const pin = M.Manifold.cylinder(zTop, 0.8, 0.8, 16).translate([0, 0, zb - 1]);
         return [centre(body.subtract(M.Manifold.union([frameGrooves(M, g.cones, cage.n, wireD), ...slots, washer, pin])))];
       },

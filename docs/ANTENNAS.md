@@ -71,6 +71,9 @@ The cages W16, W65, W40, B44f, A55 and S40's shorting wire take a wire diameter.
 design has NEC-2 tables at Ø 0.5, 0.8 and 1.5 mm besides the base 1.0 mm (A55: 0.5 and 0.8 only). `tableAt`
 (`src/lib/antennas/skycone.ts`) interpolates in log(Ø), relative to the size. Commands, env and the regeneration order
 are in `tools/wideband-antenna/README.md` ("Wire-diameter tables").
+In the app the wire Ø param runs from 0.2 to 5 mm; outside the tabulated 0.5-1.5 mm (A55: 0.5-1.0 mm, and its wire is
+capped at 1.21 mm by the coil) the Simulation uses the nearest end table and says so in a note, while the geometry
+(frames, hub ring, BOM, printed jigs) uses the true Ø.
 
 **Method**
 - Same wire models as the base tables, re-run in PyNEC with only the radius changed (`wire_variant.py`: RWIRE = Ø/2, segment
@@ -86,7 +89,9 @@ are in `tools/wideband-antenna/README.md` ("Wire-diameter tables").
   under the same test, so the tables are accepted.
 - **A55 cap:** its coiled shorting wires limit the wire to min(coilDia / 3, 0.8 pitch) = 1.21 mm, so only 0.5 and 0.8 are tabulated.
 
-**Band with SWR <= 2** (`compare_tables.py --summary wires/`; widest range, share of the design band)
+**Band with SWR <= 2** (`compare_tables.py --summary wires/`): the widest contiguous range with SWR <= 2 on the table's
+grid (0.9 × the band's bottom to 1.1 × its top), and in brackets the share of the table's log-spaced frequency points inside the
+design band that have SWR <= 2 (counted point by point, not necessarily one contiguous range).
 
 | Design | Band GHz | 0.5 mm | 0.8 mm | 1.0 mm | 1.5 mm |
 |---|---|---|---|---|---|

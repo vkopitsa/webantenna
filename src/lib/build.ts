@@ -389,7 +389,13 @@ export function bom(def: AntennaDef, d: Design, cuts: CutRow[]): BomRow[] {
     }
     if (d.frames) {
       const washers = d.tables.find((t) => t.title.startsWith("Hub washers"))?.rows ?? [];
-      for (const w of washers) rows.push({ item: M("{0}: disc Ø{1}, hole Ø{2}", String(w[0]), { len: +w[1] }, { len: +w[2] }), qty: M("{0} pc", 1), note: M("Brass or copper, 0.3–0.5 mm: the frames are soldered round its edge") });
+      for (const w of washers) {
+        if (w.length > 4 && +w[4] < +w[1]) {
+          // dished (thick wire): cut a blank as wide as the flat centre plus the slant up to the rim
+          const blank = +w[4] + 2 * Math.hypot((+w[1] - +w[4]) / 2, +w[5] - +w[3]);
+          rows.push({ item: M("{0}: disc Ø{1}, hole Ø{2}", String(w[0]), { len: blank }, { len: +w[2] }), qty: M("{0} pc", 1), note: M("Brass or copper, 0.3–0.5 mm, pressed into a shallow dish: flat to Ø{0} round the hole, {1} above the coax end, and the rim Ø{2} at {3}; the frames are soldered round the rim", { len: +w[4] }, { len: +w[3] }, { len: +w[1] }, { len: +w[5] }) });
+        } else rows.push({ item: M("{0}: disc Ø{1}, hole Ø{2}", String(w[0]), { len: +w[1] }, { len: +w[2] }), qty: M("{0} pc", 1), note: M("Brass or copper, 0.3–0.5 mm: the frames are soldered round its edge") });
+      }
       rows.push({ item: M("Semi-rigid coax UT-141 / RG-402 (Ø3.6 mm) with an SMA plug"), qty: M("{0} pc", 1), note: M("The ground collar is soldered onto its jacket") });
       rows.push(...coaxChoke(d));
       if (d.frames.pinCap) rows.push({ item: M("Capacitor {0} pF, C0G/NP0 ceramic, 0402 or 0603, ≥ 50 V", d.frames.pinCap), qty: M("{0} pc", 1), note: M("In the centre pin, between the coax end and the hot washer") });
@@ -614,7 +620,9 @@ export const BUILD_STRINGS = [
   "Brass or copper tube Ø{0}, {1} long (choke sleeve)",
   "Over the coax below the ground cone, open towards the antenna, soldered to the jacket at its far end",
   "Capacitor {0} pF, C0G/NP0 ceramic, 0402 or 0603, ≥ 50 V", "In the centre pin, between the coax end and the hot washer", "In series in a shorting wire, at its ground end", "Coax cable, {0}", "Runs from the antenna to the receiver with no choke: its length is part of the model",
-  "Brass or copper, 0.3–0.5 mm: the frames are soldered round its edge", "The ground collar is soldered onto its jacket", "Bends: see the template", "Bend into a ring and solder the ends",
+  "Brass or copper, 0.3–0.5 mm: the frames are soldered round its edge",
+  "Brass or copper, 0.3–0.5 mm, pressed into a shallow dish: flat to Ø{0} round the hole, {1} above the coax end, and the rim Ø{2} at {3}; the frames are soldered round the rim",
+  "The ground collar is soldered onto its jacket", "Bends: see the template", "Bend into a ring and solder the ends",
   "Print the 1:1 frame template (or the bending jig) and bend every frame over it with flat-nose pliers: all frames of a side must be identical.",
   "Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then solder the washer onto the coax centre pin at the listed gap.",
   "Bend each hoop on its step of the printed hoop mandrel (or into a ring of the listed diameter) and solder it against the outside of the frames at its bend, at every crossing. Keep the frames in their grooves while you do it.",
