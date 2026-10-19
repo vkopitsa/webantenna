@@ -444,62 +444,122 @@ export function substrateNotes(def: AntennaDef, p: Params, d: Design): Msg[] {
 
 // ---------------------------------------------------------------- build steps
 
+/** Every build step sentence, one home: the animations key on these exact strings. */
+export const STEP_TEXT = {
+  loop: {
+    etch: "Make the board: etch the loop trace from the 1:1 template (black = copper; for toner transfer use the Mirrored option) or have it made to the loop dimensions. Keep the two gaps in the trace: Cs goes in the top one, Cp across the bottom one at the feed.",
+    connector: "Solder the connector at the feed gap, centre pin to one side and shield to the other, and keep the joint short.",
+    caps: "Solder the series capacitor Cs in the top gap and the shunt capacitor Cp across the feed, with the values of the Matching components table (C0G/NP0, short leads). For tuning, solder a trimmer capacitor in parallel with Cs.",
+    trimmer: "Set the Cs trimmer for the best match, then replace it with a fixed capacitor of the value you measured (Cp sets the 50 Ω match).",
+  },
+  air: {
+    cut: "Cut the ground plate and the patch plate from the sheet with the sizes of the bill of materials (the 1:1 template or the DXF layers help), the patch 1 mm long. File the edges straight and square.",
+    drill: "Drill the probe hole in both plates and the standoff holes on the line x = 0, at the distances of the dimensions table. The hole in the ground plate is the clearance for the jack's insulator.",
+    jack: "Fit the SMA panel jack under the ground plate so that its centre pin stands up through the hole, and cut the pin to the height of the patch.",
+    mount: "Mount the patch plate on the nylon standoffs, parallel to the ground (the standoff length is the height), and solder the centre pin to the patch at the probe hole.",
+    director: "Fit the director plate on its own standoffs at the listed spacing above the patch, centred on it, with its edges parallel.",
+  },
+  pcb: {
+    make: "Order the board from the Gerber files, or etch it at home with the 1:1 template (for toner transfer use the Mirrored option: the top layer prints mirrored and the bottom layer as seen through the board from the top, each toner side against its copper).",
+    stack: "Stack the boards on the coax at the listed spacings (align the drill holes and keep the spacing within ±0.1 mm, e.g. with spacers cut to the listed height) and solder them in place.",
+    connector: "Solder the connector at the feed port and keep the joint short.",
+    balun: "Fit the balun or feed network from the bill of materials between the connector and the feed port, as close to the board as you can.",
+    stitch: "Stitch the top and bottom ground pours with vias along their edges (usual practice; not part of the model).",
+  },
+  sheets: {
+    print: "Print the 1:1 flat patterns, glue them onto the sheet and cut the parts out (tin snips, then file the edges).",
+    roll: "Roll each sector into its cone and each strip into its ring over a former, overlap or butt the seam and solder it along its length.",
+    hotSkirt: "Solder the hot element together (washer, cones, rim, lid) and the ground cone with its skirt. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.",
+    hot: "Solder the hot element together (washer, cones, rim, lid) and the ground cone. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.",
+    short: "Last, with the hot element on the centre pin: solder the straight shorting wire upright between the underside of the hot cone and the top of the ground cone, at the listed distance from the axis (±0.5 mm). Tin both spots first and keep the wire ends short; one wire only.",
+  },
+  frames: {
+    bend: "Print the 1:1 frame template (or the bending jig) and bend every frame over it with flat-nose pliers: all frames of a side must be identical.",
+    solderCap: "Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then join the washer to the coax centre pin through the capacitor (see the capacitor step below), keeping the listed gap.",
+    solder: "Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then solder the washer onto the coax centre pin at the listed gap.",
+    hoops: "Bend each hoop on its step of the printed hoop mandrel (or into a ring of the listed diameter) and solder it against the outside of the frames at its bend, at every crossing. Keep the frames in their grooves while you do it.",
+    pinCap: "Fit the {0} pF capacitor in the centre pin: solder it between the coax centre pin and the hot washer (it spans the listed gap), instead of a plain joint.",
+    short1: "Last, with the hot cage on the centre pin: solder the straight shorting wire from one hot frame down to the ground frame under it, at the marks of the template (its distance from the axis is in the table, ±0.5 mm). One wire only, on one frame; it passes just outside the small ground hoop, so keep the two from touching.",
+    coil1: "Last, with the hot cage on the centre pin: solder the coiled shorting wire from a hot frame down to the ground frame under it, at the marks of the template (its distance from the axis is in the table, ±0.5 mm). The coil sits beside its frame; keep it clear of the hoops.",
+    coilN: "Last, with the hot cage on the centre pin: solder each of the {0} coiled shorting wires from a hot frame down to the ground frame under it, at the marks of the template, which name the frame of each (its distance from the axis is in the table, ±0.5 mm). The coils sit beside their frames and the wires pass just outside the small ground hoop; keep them clear of the hoops and of each other.",
+    shortN: "Last, with the hot cage on the centre pin: solder each of the {0} straight shorting wires from a hot frame down to the ground frame under it, at the marks of the template, which name the frame of each (its distance from the axis is in the table, ±0.5 mm). They pass just outside the small ground hoop, so keep the two from touching.",
+    shortCap: "Fit the {0} pF capacitor in series at the ground end of the shorting wire marked with it on the template: cut the wire there and solder the capacitor in, with short leads.",
+  },
+  wire: {
+    cutLong: "Cut every part to the cut length in the list. Driven parts are cut long so you can trim them.",
+    cut: "Cut every part to the cut length in the list.",
+    wind: "Wind the coil on a drill bit or bolt of {0}.",
+    boom: "Tape the 1:1 drilling strip to the boom, mark the element positions, then drill and fit the elements.",
+    bend: "Bend and assemble the parts using the dimensions and, where it fits on paper, the 1:1 template.",
+    feedMatch: "Fit the feed line at the feed point, with the balun or match from the bill of materials.",
+    feed: "Fit the feed line at the feed point.",
+  },
+  common: {
+    position: "Put the antenna in its final position, clear of metal, before you measure.",
+    measure: "Measure S11 or SWR with a VNA or antenna analyser and note the frequency of the best match.",
+    trim: "Trim in small steps using the tuning table and measure again after each step. If the resonance is already too high, the part is too short: add length or cut a new one.",
+    enclosure: "Measure again inside the final enclosure: plastic close to the antenna lowers the resonance.",
+    s1p: "Load the measured .s1p in the Simulation tab to compare it with the model and get a trim suggestion.",
+    seal: "Seal the feed point against water (self-amalgamating tape) if the antenna goes outdoors.",
+  },
+} as const;
+
 /** What the cut list and bill of materials say, so the generic steps only mention what applies. */
 export interface StepsCtx { air?: boolean; loop?: boolean; cutLong?: boolean; match?: boolean; wind?: number }
 
 export function steps(d: Design, hasBoom: boolean, tunable: boolean, ctx: StepsCtx = {}): Msg[] {
   const s: Msg[] = [];
   if (ctx.loop) {
-    s.push(M("Make the board: etch the loop trace from the 1:1 template (black = copper; for toner transfer use the Mirrored option) or have it made to the loop dimensions. Keep the two gaps in the trace: Cs goes in the top one, Cp across the bottom one at the feed."));
-    s.push(M("Solder the connector at the feed gap, centre pin to one side and shield to the other, and keep the joint short."));
-    s.push(M("Solder the series capacitor Cs in the top gap and the shunt capacitor Cp across the feed, with the values of the Matching components table (C0G/NP0, short leads). For tuning, solder a trimmer capacitor in parallel with Cs."));
-    s.push(M("Set the Cs trimmer for the best match, then replace it with a fixed capacitor of the value you measured (Cp sets the 50 Ω match)."));
+    s.push(M(STEP_TEXT.loop.etch));
+    s.push(M(STEP_TEXT.loop.connector));
+    s.push(M(STEP_TEXT.loop.caps));
+    s.push(M(STEP_TEXT.loop.trimmer));
   } else if (ctx.air && d.pcb) {
     const dir = !!d.pcb.levels?.length;
-    s.push(M("Cut the ground plate and the patch plate from the sheet with the sizes of the bill of materials (the 1:1 template or the DXF layers help), the patch 1 mm long. File the edges straight and square."));
-    s.push(M("Drill the probe hole in both plates and the standoff holes on the line x = 0, at the distances of the dimensions table. The hole in the ground plate is the clearance for the jack's insulator."));
-    s.push(M("Fit the SMA panel jack under the ground plate so that its centre pin stands up through the hole, and cut the pin to the height of the patch."));
-    s.push(M("Mount the patch plate on the nylon standoffs, parallel to the ground (the standoff length is the height), and solder the centre pin to the patch at the probe hole."));
-    if (dir) s.push(M("Fit the director plate on its own standoffs at the listed spacing above the patch, centred on it, with its edges parallel."));
+    s.push(M(STEP_TEXT.air.cut));
+    s.push(M(STEP_TEXT.air.drill));
+    s.push(M(STEP_TEXT.air.jack));
+    s.push(M(STEP_TEXT.air.mount));
+    if (dir) s.push(M(STEP_TEXT.air.director));
   } else if (d.pcb) {
-    s.push(M("Order the board from the Gerber files, or etch it at home with the 1:1 template (for toner transfer use the Mirrored option: the top layer prints mirrored and the bottom layer as seen through the board from the top, each toner side against its copper)."));
-    if (d.pcb.levels?.length) s.push(M("Stack the boards on the coax at the listed spacings (align the drill holes and keep the spacing within ±0.1 mm, e.g. with spacers cut to the listed height) and solder them in place."));
-    else s.push(M("Solder the connector at the feed port and keep the joint short."));
-    if (ctx.match) s.push(M("Fit the balun or feed network from the bill of materials between the connector and the feed port, as close to the board as you can."));
+    s.push(M(STEP_TEXT.pcb.make));
+    if (d.pcb.levels?.length) s.push(M(STEP_TEXT.pcb.stack));
+    else s.push(M(STEP_TEXT.pcb.connector));
+    if (ctx.match) s.push(M(STEP_TEXT.pcb.balun));
     const grounds = d.pcb.rects.filter((q) => /Ground/.test(q.label));
-    if (new Set(grounds.map((q) => q.layer)).size > 1) s.push(M("Stitch the top and bottom ground pours with vias along their edges (usual practice; not part of the model)."));
+    if (new Set(grounds.map((q) => q.layer)).size > 1) s.push(M(STEP_TEXT.pcb.stitch));
   } else if (d.sheets?.length) {
-    s.push(M("Print the 1:1 flat patterns, glue them onto the sheet and cut the parts out (tin snips, then file the edges)."));
-    s.push(M("Roll each sector into its cone and each strip into its ring over a former, overlap or butt the seam and solder it along its length."));
-    s.push(d.sheets.some((x) => /skirt/i.test(x.label)) ? M("Solder the hot element together (washer, cones, rim, lid) and the ground cone with its skirt. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.") : M("Solder the hot element together (washer, cones, rim, lid) and the ground cone. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap."));
-    if (d.wires.some((w) => w.tag === "S")) s.push(M("Last, with the hot element on the centre pin: solder the straight shorting wire upright between the underside of the hot cone and the top of the ground cone, at the listed distance from the axis (±0.5 mm). Tin both spots first and keep the wire ends short; one wire only."));
+    s.push(M(STEP_TEXT.sheets.print));
+    s.push(M(STEP_TEXT.sheets.roll));
+    s.push(d.sheets.some((x) => /skirt/i.test(x.label)) ? M(STEP_TEXT.sheets.hotSkirt) : M(STEP_TEXT.sheets.hot));
+    if (d.wires.some((w) => w.tag === "S")) s.push(M(STEP_TEXT.sheets.short));
   } else if (d.frames) {
-    s.push(M("Print the 1:1 frame template (or the bending jig) and bend every frame over it with flat-nose pliers: all frames of a side must be identical."));
-    s.push(d.frames.pinCap ? M("Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then join the washer to the coax centre pin through the capacitor (see the capacitor step below), keeping the listed gap.") : M("Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then solder the washer onto the coax centre pin at the listed gap."));
-    s.push(M("Bend each hoop on its step of the printed hoop mandrel (or into a ring of the listed diameter) and solder it against the outside of the frames at its bend, at every crossing. Keep the frames in their grooves while you do it."));
-    if (d.frames.pinCap) s.push(M("Fit the {0} pF capacitor in the centre pin: solder it between the coax centre pin and the hot washer (it spans the listed gap), instead of a plain joint.", d.frames.pinCap));
+    s.push(M(STEP_TEXT.frames.bend));
+    s.push(d.frames.pinCap ? M(STEP_TEXT.frames.solderCap) : M(STEP_TEXT.frames.solder));
+    s.push(M(STEP_TEXT.frames.hoops));
+    if (d.frames.pinCap) s.push(M(STEP_TEXT.frames.pinCap, d.frames.pinCap));
     const sw = d.frames.short ?? [];
     if (sw.length) {
       const coil = sw.some((q) => q.coil);
-      s.push(sw.length === 1 && !coil ? M("Last, with the hot cage on the centre pin: solder the straight shorting wire from one hot frame down to the ground frame under it, at the marks of the template (its distance from the axis is in the table, ±0.5 mm). One wire only, on one frame; it passes just outside the small ground hoop, so keep the two from touching.")
-        : sw.length === 1 ? M("Last, with the hot cage on the centre pin: solder the coiled shorting wire from a hot frame down to the ground frame under it, at the marks of the template (its distance from the axis is in the table, ±0.5 mm). The coil sits beside its frame; keep it clear of the hoops.")
-          : coil ? M("Last, with the hot cage on the centre pin: solder each of the {0} coiled shorting wires from a hot frame down to the ground frame under it, at the marks of the template, which name the frame of each (its distance from the axis is in the table, ±0.5 mm). The coils sit beside their frames and the wires pass just outside the small ground hoop; keep them clear of the hoops and of each other.", sw.length)
-            : M("Last, with the hot cage on the centre pin: solder each of the {0} straight shorting wires from a hot frame down to the ground frame under it, at the marks of the template, which name the frame of each (its distance from the axis is in the table, ±0.5 mm). They pass just outside the small ground hoop, so keep the two from touching.", sw.length));
-      for (const cv of new Set(sw.map((q) => q.cap).filter((c): c is number => !!c))) s.push(M("Fit the {0} pF capacitor in series at the ground end of the shorting wire marked with it on the template: cut the wire there and solder the capacitor in, with short leads.", cv));
+      s.push(sw.length === 1 && !coil ? M(STEP_TEXT.frames.short1)
+        : sw.length === 1 ? M(STEP_TEXT.frames.coil1)
+          : coil ? M(STEP_TEXT.frames.coilN, sw.length)
+            : M(STEP_TEXT.frames.shortN, sw.length));
+      for (const cv of new Set(sw.map((q) => q.cap).filter((c): c is number => !!c))) s.push(M(STEP_TEXT.frames.shortCap, cv));
     }
   } else {
-    s.push(ctx.cutLong ? M("Cut every part to the cut length in the list. Driven parts are cut long so you can trim them.") : M("Cut every part to the cut length in the list."));
-    if (ctx.wind != null) s.push(M("Wind the coil on a drill bit or bolt of {0}.", { len: ctx.wind }));
-    if (hasBoom) s.push(M("Tape the 1:1 drilling strip to the boom, mark the element positions, then drill and fit the elements."));
-    else s.push(M("Bend and assemble the parts using the dimensions and, where it fits on paper, the 1:1 template."));
-    s.push(ctx.match ? M("Fit the feed line at the feed point, with the balun or match from the bill of materials.") : M("Fit the feed line at the feed point."));
+    s.push(ctx.cutLong ? M(STEP_TEXT.wire.cutLong) : M(STEP_TEXT.wire.cut));
+    if (ctx.wind != null) s.push(M(STEP_TEXT.wire.wind, { len: ctx.wind }));
+    if (hasBoom) s.push(M(STEP_TEXT.wire.boom));
+    else s.push(M(STEP_TEXT.wire.bend));
+    s.push(ctx.match ? M(STEP_TEXT.wire.feedMatch) : M(STEP_TEXT.wire.feed));
   }
-  s.push(M("Put the antenna in its final position, clear of metal, before you measure."));
-  s.push(M("Measure S11 or SWR with a VNA or antenna analyser and note the frequency of the best match."));
-  if (tunable) s.push(M("Trim in small steps using the tuning table and measure again after each step. If the resonance is already too high, the part is too short: add length or cut a new one."));
-  if (d.pcb || ctx.loop) s.push(M("Measure again inside the final enclosure: plastic close to the antenna lowers the resonance."));
-  s.push(M("Load the measured .s1p in the Simulation tab to compare it with the model and get a trim suggestion."));
-  if (!d.pcb) s.push(M("Seal the feed point against water (self-amalgamating tape) if the antenna goes outdoors."));
+  s.push(M(STEP_TEXT.common.position));
+  s.push(M(STEP_TEXT.common.measure));
+  if (tunable) s.push(M(STEP_TEXT.common.trim));
+  if (d.pcb || ctx.loop) s.push(M(STEP_TEXT.common.enclosure));
+  s.push(M(STEP_TEXT.common.s1p));
+  if (!d.pcb) s.push(M(STEP_TEXT.common.seal));
   return s;
 }
 
@@ -568,8 +628,8 @@ export const BUILD_STRINGS = [
   ...Object.values(NOT_TRIMMED), ...Object.values(PRINTED).flatMap((x) => [x.what, x.how]),
   "Radome tube (PVC or polycarbonate), inside Ø {0} or more, {1} long", "Optional: weatherproofing; it lowers the resonance by 1–3 %", "Ferrite bead or λ/4 choke on the cable", "Keeps current off the cable shield below the board",
   "Band element", "Folded dipole", "Move each end of the folded dipole in by {0}", "Disc rod", "Cone rod", "Top whip",
-  "Wind it on a former; see the helix dimensions", "Wind the coil on a drill bit or bolt of {0}.", "PCB with the loop trace ({0} × {1} loop)", "Reflector loop", "Driven loop", "Radiator", "Driven element", "Director", "Reflector", "Parasitic element", "Radial",
-  "Matching section or stub", "Wire", "Boom or support", "Helix wire", "Leaf wire", "Semi-rigid coax RG402 (Ø3.6 mm) with an SMA plug, at least {0} long", "Runs through the boards: the shield is soldered to them", "Stack the boards on the coax at the listed spacings (align the drill holes and keep the spacing within ±0.1 mm, e.g. with spacers cut to the listed height) and solder them in place.", "Spring wire (lead + coil, straightened)", "Coax section (cut braid to braid)",
+  "Wind it on a former; see the helix dimensions", "PCB with the loop trace ({0} × {1} loop)", "Reflector loop", "Driven loop", "Radiator", "Driven element", "Director", "Reflector", "Parasitic element", "Radial",
+  "Matching section or stub", "Wire", "Boom or support", "Helix wire", "Leaf wire", "Semi-rigid coax RG402 (Ø3.6 mm) with an SMA plug, at least {0} long", "Runs through the boards: the shield is soldered to them", "Spring wire (lead + coil, straightened)", "Coax section (cut braid to braid)",
   "Shorten the loop by {0} (at the joint or overlap)", "Trim {0} off the open end", "Trim {0} off each end",
   "SMA panel jack (probe through the board)", "SMA edge-mount or u.FL connector", "SMA edge-mount connector",
   "SO-239 (UHF) or N chassis socket", "N or SMA chassis socket", "SMA chassis socket",
@@ -582,7 +642,6 @@ export const BUILD_STRINGS = [
   "Ground plate: sheet {0} thick (copper, brass or aluminium, or single-sided PCB laminate with the copper facing the patch)", "Patch plate: the same sheet; cut it 1 mm long and trim to resonance", "Director plate: the same sheet, {0} above the patch",
   "Nylon standoff {0} long, M3", "On the line x = 0 where the patch field is zero (the director has its own two)", "Nylon screws and nuts M3", "Centre pin through the ground plate to the patch, {0} long above the ground",
   "If the gap between the plates ends up 1 mm larger than designed, this layout resonates {0} lower ({1}).", "The patch is in air: there is no laminate εr or loss to worry about. Keep the plates flat and parallel (a tilt acts like a height error) and the standoffs on the zero-field line.",
-  "Cut the ground plate and the patch plate from the sheet with the sizes of the bill of materials (the 1:1 template or the DXF layers help), the patch 1 mm long. File the edges straight and square.", "Drill the probe hole in both plates and the standoff holes on the line x = 0, at the distances of the dimensions table. The hole in the ground plate is the clearance for the jack's insulator.", "Fit the SMA panel jack under the ground plate so that its centre pin stands up through the hole, and cut the pin to the height of the patch.", "Mount the patch plate on the nylon standoffs, parallel to the ground (the standoff length is the height), and solder the centre pin to the patch at the probe hole.", "Fit the director plate on its own standoffs at the listed spacing above the patch, centred on it, with its edges parallel.",
   "Capacitor {0}, C0G/NP0", "Trimmer capacitor in parallel with Cs (optional, for tuning)",
   "If the real εr is 0.1 higher, this layout resonates {0} lower ({1}).",
   "FR-4 εr varies from about 4.2 to 4.7 between suppliers and with frequency: this layout would resonate between {0} and {1}. Ask the fab for εr at your frequency, or tune after the first board.",
@@ -590,27 +649,6 @@ export const BUILD_STRINGS = [
   "The same layout on FR-4 (εr 4.4) would resonate at about {0}.",
   "FR-4 loss (tan δ ≈ 0.02) costs noticeable efficiency above about 3 GHz; a low-loss laminate such as RO4003C helps.",
   "Solder mask over the antenna lowers the resonance slightly. Keep the antenna area unmasked, or tune with the mask applied.",
-  "Order the board from the Gerber files, or etch it at home with the 1:1 template (for toner transfer use the Mirrored option: the top layer prints mirrored and the bottom layer as seen through the board from the top, each toner side against its copper).",
-  "Solder the connector at the feed port and keep the joint short.",
-  "Stitch the top and bottom ground pours with vias along their edges (usual practice; not part of the model).",
-  "Cut every part to the cut length in the list. Driven parts are cut long so you can trim them.", "Cut every part to the cut length in the list.",
-  "Fit the feed line at the feed point.",
-  "Fit the balun or feed network from the bill of materials between the connector and the feed port, as close to the board as you can.",
-  "Make the board: etch the loop trace from the 1:1 template (black = copper; for toner transfer use the Mirrored option) or have it made to the loop dimensions. Keep the two gaps in the trace: Cs goes in the top one, Cp across the bottom one at the feed.",
-  "Solder the connector at the feed gap, centre pin to one side and shield to the other, and keep the joint short.",
-  "Solder the series capacitor Cs in the top gap and the shunt capacitor Cp across the feed, with the values of the Matching components table (C0G/NP0, short leads). For tuning, solder a trimmer capacitor in parallel with Cs.",
-  "Set the Cs trimmer for the best match, then replace it with a fixed capacitor of the value you measured (Cp sets the 50 Ω match).",
-  "Solder the hot element together (washer, cones, rim, lid) and the ground cone. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.",
-  "Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then join the washer to the coax centre pin through the capacitor (see the capacitor step below), keeping the listed gap.",
-  "Tape the 1:1 drilling strip to the boom, mark the element positions, then drill and fit the elements.",
-  "Bend and assemble the parts using the dimensions and, where it fits on paper, the 1:1 template.",
-  "Fit the feed line at the feed point, with the balun or match from the bill of materials.",
-  "Put the antenna in its final position, clear of metal, before you measure.",
-  "Measure S11 or SWR with a VNA or antenna analyser and note the frequency of the best match.",
-  "Trim in small steps using the tuning table and measure again after each step. If the resonance is already too high, the part is too short: add length or cut a new one.",
-  "Measure again inside the final enclosure: plastic close to the antenna lowers the resonance.",
-  "Load the measured .s1p in the Simulation tab to compare it with the model and get a trim suggestion.",
-  "Seal the feed point against water (self-amalgamating tape) if the antenna goes outdoors.",
   "Brass or copper sheet 0.3–0.5 mm, about {0} × {1}", "Cut the flat patterns from the 1:1 template",
   "{0}: annular sector R {1} – {2}, {3}°", "{0}: strip {1} × {2}", "{0}: disc Ø{1}, hole Ø{2}",
   "Semi-rigid coax UT-141 / RG-402 (Ø3.6 mm) with an SMA plug", "The jacket is soldered into the ground cone apex",
@@ -623,20 +661,8 @@ export const BUILD_STRINGS = [
   "Brass or copper, 0.3–0.5 mm: the frames are soldered round its edge",
   "Brass or copper, 0.3–0.5 mm, pressed into a shallow dish: flat to Ø{0} round the hole, {1} above the coax end, and the rim Ø{2} at {3}; the frames are soldered round the rim",
   "The ground collar is soldered onto its jacket", "Bends: see the template", "Bend into a ring and solder the ends",
-  "Print the 1:1 frame template (or the bending jig) and bend every frame over it with flat-nose pliers: all frames of a side must be identical.",
-  "Solder the hot frames to the washer in the printed cradle and the ground frames to the collar on the coax jacket in the cup: one groove per frame keeps them at equal angles. Then solder the washer onto the coax centre pin at the listed gap.",
-  "Bend each hoop on its step of the printed hoop mandrel (or into a ring of the listed diameter) and solder it against the outside of the frames at its bend, at every crossing. Keep the frames in their grooves while you do it.",
-  "Last, with the hot cage on the centre pin: solder the straight shorting wire from one hot frame down to the ground frame under it, at the marks of the template (its distance from the axis is in the table, ±0.5 mm). One wire only, on one frame; it passes just outside the small ground hoop, so keep the two from touching.",
   "Straight: solder it on at the marks of the template",
-  "Fit the {0} pF capacitor in the centre pin: solder it between the coax centre pin and the hot washer (it spans the listed gap), instead of a plain joint.",
-  "Last, with the hot cage on the centre pin: solder the coiled shorting wire from a hot frame down to the ground frame under it, at the marks of the template (its distance from the axis is in the table, ±0.5 mm). The coil sits beside its frame; keep it clear of the hoops.",
-  "Last, with the hot cage on the centre pin: solder each of the {0} coiled shorting wires from a hot frame down to the ground frame under it, at the marks of the template, which name the frame of each (its distance from the axis is in the table, ±0.5 mm). The coils sit beside their frames and the wires pass just outside the small ground hoop; keep them clear of the hoops and of each other.",
-  "Last, with the hot cage on the centre pin: solder each of the {0} straight shorting wires from a hot frame down to the ground frame under it, at the marks of the template, which name the frame of each (its distance from the axis is in the table, ±0.5 mm). They pass just outside the small ground hoop, so keep the two from touching.",
-  "Fit the {0} pF capacitor in series at the ground end of the shorting wire marked with it on the template: cut the wire there and solder the capacitor in, with short leads.",
-  "Print the 1:1 flat patterns, glue them onto the sheet and cut the parts out (tin snips, then file the edges).",
-  "Roll each sector into its cone and each strip into its ring over a former, overlap or butt the seam and solder it along its length.",
-  "Last, with the hot element on the centre pin: solder the straight shorting wire upright between the underside of the hot cone and the top of the ground cone, at the listed distance from the axis (±0.5 mm). Tin both spots first and keep the wire ends short; one wire only.",
-  "Solder the hot element together (washer, cones, rim, lid) and the ground cone with its skirt. Solder the coax jacket into the ground cone apex and the centre pin into the washer, keeping the listed gap.",
+  ...Object.values(STEP_TEXT).flatMap((g) => Object.values(g)),
 ];
 
 
