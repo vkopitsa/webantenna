@@ -74,7 +74,7 @@ const boomStrip: Scene = {
       </Move>
       <Arrow d="M144 40 L144 100" />
     </Fade>
-    <In a={0.22}><Arrow d="M200 80 L200 140" /></In>
+    <Fade values={[0, 0, 1, 1, 0, 0]} times={[0, 0.22, 0.26, 0.46, 0.5, 1]}><Arrow d="M200 80 L200 140" /></Fade>
     <In a={0.8}><Label x={172} y={232} text={t("element")} to={[163, 226]} /></In>
     <Label x={20} y={218} text={t("drilling strip")} to={[60, 187]} />
     <Label x={305} y={218} text={t("boom")} anchor="end" to={[296, 190]} />
