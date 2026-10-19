@@ -85,6 +85,68 @@ radius; `au1`, `L1` feed-cone half-angle (from +z) and slant; `au2` main-cone ha
 radius; `Hcu` rim height; `capu` lid closure (1 = closed); `al1`, `Ll1`, `al2` ground-cone half-angles
 (from −z, 90 = flat) and the first section's slant; `Rl` ground radius; `Sl` ground skirt length.
 
+## Wire-diameter tables (`wires/`)
+
+The app lets you pick the cage wire Ø. Each wire design (W16, W65, W40, B44f, A55, S40) has an app table and a
+bare-coax table per Ø in `wires/app_<D>_d<mm>.json` and `wires/bare_<D>_d<mm>.json`. They use the same command
+lines, bands and number of points as the main tables. Tabulated: 0.5, 0.8, 1.0 and 1.5 mm. The top Ø is 1.5 mm,
+and A55 stops at 0.8 mm.
+
+- **The wire env:** `python wire_variant.py <d m> <f_hi Hz>` prints `RWIRE=… HUB_R=… SEG=…`.
+  - Hub ring: hub(d) = max(3 mm, n·d·1.1 / 2π) with n = 16, so 16 frames fit round the ring with 10 % spare.
+  - Segments: seg = 1.5 mm up to Ø1 (the committed tables). Above Ø1 it is max(1.5 mm, 4r), at most λ/10 at f_hi.
+  - W16 (`export_cage_table.py`) keeps its λ/30 segments, with SEG as a floor under them. A fixed 3 mm gave a
+    spurious resonance near 1 GHz on the Ø1.5 cage: R < 0 and 11 dBi, moving with the segment length.
+- **The run:** `DS="0.5 0.8 1.5" PY=<venv python> nohup sh results/run_wires.sh &`.
+  - It takes about 3 h for three diameters (8 cores): app tables in parallel, then the bare tables one by one.
+  - Wait for `wires/all_done`. `wires/done_<D>_d<mm>` is written when both tables of a design exist.
+  - `SKIP` (default `A55:1.5 A55:2.0 W40:2.0`) leaves pairs out.
+  - The script stops if `wire_variant.py` fails. Delete `wires/*.log` and the markers afterwards; they are not
+    committed.
+- **The gate:** `DS=1.0` must reproduce the committed entries:
+  `python compare_tables.py wires/app_W40_d1.0.json ../../src/lib/antennas/skycone.data.ts:SKYCONE_W40`
+  (B44f is `SKYCONE_B44`, and `--bare` compares the bare block).
+  - Result: ≤ 0.05 Ω / 0.05 dB on the app tables (the .ts rounding) and 0.000 on the bare tables.
+  - Rerun a 2-frequency Ø1 run after any change to `family10.py` / `wirecage.py`. The Ø1 wire lists must stay
+    identical.
+- **The PyNEC rule behind the thick-wire fixes:**
+  - `c_geometry::wire` rejects ("Unknown exception") a new wire 0.98–2.0 radii long that joins an earlier wire of
+    that radius. Shorter or longer pieces pass, and so does the reverse order.
+  - `wire_variant.nec_order()` hands such wires to NEC first. The geometry and the solution are unchanged, and a
+    Ø1 list keeps its order.
+  - Where the washer edge lies inside HUB_R, the frames are cut at HUB_R. Before, the ring sat on the washer edge,
+    with chords shorter than the wire.
+  - An open lid with a hole smaller than HUB_R ends on a hub-radius ring.
+  - The app's cage builder must make the same cuts for d > 1 mm.
+- **Convergence rule:** Z moves < 2 % and gain < 0.2 dB against seg × 0.75
+  (`compare_tables.py a.json b.json --rel-z 0.02 --tol-g 0.2 [--g-floor 10]`).
+  - The committed Ø1.0 tables do not meet it themselves: W16 2.3 %, B44f 3.2 % for 1.5 vs 1.125 mm segments.
+  - So a variant is accepted when its sensitivity is no worse than Ø1.0's.
+  - Ø2.0 at SEG 4 mm vs 3 mm: W16 18 % (3.2 % in band), B44f 3.9 %. With SEG × 1.25 (5 vs 4 mm): W16 209 %,
+    B44f 3.0 %. Ø2.0 is **dropped**.
+  - Ø1.5, B44f, 3 vs 2.25 mm: 1.7 %, 0.12 dB.
+  - Ø1.5, W16, max(3 mm, λ/30) vs max(2.25 mm, λ/40): 4.2 % in band, d|Γ| 0.028. Ø1.0 under the same
+    refinement: 4.0 %, 0.022.
+  - W40 also cannot be built at Ø2: its 5.6 mm hub ring meets the shorting wire at ρ 6.9 mm.
+- **A55 coil limit:** min(coilDia / 3, 0.8 · pitch) at reference scale. From app_A55.json that is
+  min(3.62 / 3, 0.8 · 29.19 / 2) = **1.21 mm**, so 0.5 and 0.8 are tabulated besides 1.0. NEC also rejects the coil
+  at 1.5.
+- **Sanity check:** `python compare_tables.py --summary wires/` prints a table per design and Ø:
+  - the widest SWR ≤ 2 range, the share of the band with SWR ≤ 2, and the in-band worst SWR;
+  - the mean +30° and peak gain;
+  - Prad/Pin, the sphere mean of the table's gain. A lossless model gives 0 dB, so this is NEC's power-balance
+    error: +1.3 to −1.2 dB, monotonic in Ø, present in the committed Ø1.0 tables too (W65 −0.49, S40 +0.96 dB).
+    It explains most of the steady gain fall with Ø.
+  - Gain jumps > 1 dB between neighbouring diameters at any in-band frequency, plain and with a one-grid-step shift
+    allowed.
+  - The flagged jumps (B44f near 5.4–5.8 GHz, W65 at 3.7–3.9 GHz, W16 at 3.6–3.7 GHz) are narrow suck-outs (a
+    Z excursion with a 3–4 dB dip at +30°). They are present at Ø1.0 and move up in frequency as Ø grows, so they
+    land on different grid points. The top-of-band ones are lobe swaps between +30° and +65°.
+- **Regeneration order for `skycone.data.ts`:**
+  1. `to_ts.py`, the entries.
+  2. `add_bare.py`, the `bare` blocks.
+  3. The `wires` variants from this folder (`to_ts.py --add-wires`, which inserts them into the existing entries).
+
 ## Workflow that worked (repeat it for a new requirement)
 
 1. **Baseline the obvious candidates** with the app's own MoM (`app_mom_baseline.test.ts.txt`):

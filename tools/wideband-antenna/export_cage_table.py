@@ -19,7 +19,9 @@ out = dict(fLo=f_lo, fHi=f_hi, gap=p["g"], upper=[np.round(a, 6).tolist() for a 
            lower=[np.round(a, 6).tolist() for a in lo], els=els.tolist(), f=[], r=[], x=[], g=[],
            cage=dict(n=n, r=r, hub=W.HUB_R))
 for f in D.logf(nf, 0.9 * f_lo, 1.1 * f_hi):
-    z, gg = W.model(fam, p, f, n, r, per=30, els=els, **({"seg": float(os.environ["SEG"])} if os.environ.get("SEG") else {}))
+    # SEG (thick wires) is a floor under the lambda / 30 segments: a fixed 1.5 - 3 mm everywhere gave a spurious
+    # resonance near 1 GHz on the Ø1.5 cage (R < 0, 11 dBi; it moved with the segment length)
+    z, gg = W.model(fam, p, f, n, r, per=30, els=els, **({"seg": max(float(os.environ["SEG"]), 3e8 / f / 30)} if os.environ.get("SEG") else {}))
     g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))[::-1]        # rows come theta-ascending = elevation descending
     out["f"].append(round(f / f_lo, 5)); out["r"].append(round(z.real, 2)); out["x"].append(round(z.imag, 2))
     out["g"].append(np.round(g, 2).tolist())

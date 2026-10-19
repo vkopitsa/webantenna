@@ -7,7 +7,8 @@
 # Phase 1: the six app tables at once (5 single processes + the S40 row pool of 3 = 8 cores).
 # Phase 2: the bare tables one after another (each runs a Pool of 8). Same command lines, bands and nf as the README
 # pipeline and run_bare.sh; the wire env (RWIRE, HUB_R, SEG) comes from wire_variant.py. At Ø1.0 the W16 table keeps its
-# own lambda / 30 segments (export_cage_table.py without SEG) so that it reproduces the committed one.
+# own lambda / 30 segments (export_cage_table.py without SEG) so that it reproduces the committed one; at other
+# diameters SEG is a floor under lambda / 30 there (a fixed SEG gave a spurious resonance near 1 GHz at Ø1.5).
 PY=${PY:-python}
 DS=${DS:-1.0}
 SKIP=${SKIP:-"A55:1.5 A55:2.0 W40:2.0"}
