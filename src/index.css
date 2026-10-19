@@ -364,7 +364,8 @@ tr.pinned td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .dim-bg { fill: var(--chart-bg); opacity: 0.85; }
 
 /* build steps with pictures */
-.steps li.has-pic { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; }
+/* inline-grid at the top of the item's line box: the list number sits on the first line, not under the picture */
+.steps .step-row { display: inline-grid; vertical-align: top; width: 100%; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; }
 .step-pic { display: block; width: 140px; height: 105px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: zoom-in; overflow: hidden; }
 .step-pic .step-svg { display: block; width: 100%; height: 100%; }
 .step-big { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); cursor: zoom-out; }
@@ -373,7 +374,7 @@ tr.pinned td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .step-big figcaption { margin-top: 8px; color: var(--fg); }
 .step-close { position: absolute; top: 6px; right: 6px; }
 @media (max-width: 600px) {
-  .steps li.has-pic { grid-template-columns: minmax(0, 1fr); }
+  .steps .step-row { grid-template-columns: minmax(0, 1fr); }
   .step-pic { width: 100%; max-width: 320px; height: auto; aspect-ratio: 4 / 3; }
 }
 

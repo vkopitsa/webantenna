@@ -51,7 +51,8 @@ function Big({ scene, title, onClose }: { scene: Scene; title: string; onClose: 
   useSceneControl(box, scene);
   useEffect(() => {
     close.current?.focus();
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // stopPropagation: the window-level Esc handlers (drawer, Preview pin, chart cursor) must not see it
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
   }, [onClose]);
@@ -71,11 +72,11 @@ function Player({ scene, title }: { scene: Scene; title: string }) {
   const t = useT();
   const box = useRef<HTMLButtonElement>(null);
   const [big, setBig] = useState(false);
-  const shut = useCallback(() => setBig(false), []);
+  const shut = useCallback(() => { setBig(false); box.current?.focus(); }, []);
   useSceneControl(box, scene);
   return (
     <>
-      <button ref={box} type="button" className="step-pic" aria-label={title} onClick={() => setBig(true)}>
+      <button ref={box} type="button" className="step-pic" aria-label={t("Enlarge picture")} onClick={() => setBig(true)}>
         <SceneSvg scene={scene} t={t} label={title} />
       </button>
       {big && <Big scene={scene} title={title} onClose={shut} />}
@@ -83,12 +84,20 @@ function Player({ scene, title }: { scene: Scene; title: string }) {
   );
 }
 
-const Loaded = lazy(() => import("./scenes/index").then(({ SCENES }) => ({
+/** Stand-in when the scenes chunk fails to load (stale hash after a deploy, offline): the row stays text only. */
+// oxlint-disable-next-line react/only-export-components -- exported for the test
+export const NoPic = (): null => null;
+
+/** The lazy module: a picker over the scenes, or NoPic when the import rejects. */
+// oxlint-disable-next-line react/only-export-components -- exported for the test
+export const loadPicker = (load: () => Promise<{ SCENES: Record<string, Scene> }>) => load().then(({ SCENES }) => ({
   default: function Pick({ id, title }: { id: string; title: string }) {
-    const scene = (SCENES as Record<string, Scene>)[id];
+    const scene = SCENES[id];
     return scene ? <Player scene={scene} title={title} /> : null;
   },
-})));
+}), () => ({ default: NoPic }));
+
+const Loaded = lazy(() => loadPicker(() => import("./scenes/index") as Promise<{ SCENES: Record<string, Scene> }>));
 
 /** A build step's looping picture (lazy chunk); click or Enter enlarges it. */
 export function StepPic(props: { id: SceneId; title: string }) {

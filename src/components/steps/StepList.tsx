@@ -16,8 +16,12 @@ export function StepList(p: { items: Msg[] }) {
         const text = fmtMsg(t, unit, m);
         return (
           <li key={i} className={id ? "has-pic" : undefined}>
-            {id && <StepPic id={id} title={text} />}
-            <span>{text}</span>
+            {id ? (
+              <div className="step-row">
+                <StepPic id={id} title={text} />
+                <span>{text}</span>
+              </div>
+            ) : <span>{text}</span>}
           </li>
         );
       })}

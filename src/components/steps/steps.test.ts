@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { Label, Rot, type Scene } from "./kit";
-import { SceneSvg, controlScene } from "./StepPic";
+import { NoPic, SceneSvg, loadPicker, controlScene } from "./StepPic";
 import { SCENES } from "./scenes/index";
 import { DONE_GROUPS, STEP_PICS } from "./registry";
 import { STEP_TEXT } from "../../lib/build";
@@ -112,6 +112,16 @@ describe("StepList", () => {
   it("a row with a picture gets has-pic and the picture placeholder before its text", () => {
     const html = renderToStaticMarkup(createElement(StepList, { items: [{ s: STEP_TEXT.common.measure }] }));
     expect(STEP_PICS[STEP_TEXT.common.measure]).toBe("measure");
-    expect(html).toContain('<li class="has-pic"><div class="step-pic"></div><span>');
+    expect(html).toContain('<li class="has-pic"><div class="step-row"><div class="step-pic"></div><span>');
+  });
+});
+
+describe("scenes chunk load failure", () => {
+  it("the fallback renders nothing, so the row stays text only", () => {
+    expect(renderToStaticMarkup(createElement(NoPic, { id: "measure", title: "x" }))).toBe("");
+  });
+  it("a rejected scenes import resolves to the fallback instead of throwing", async () => {
+    const m = await loadPicker(() => Promise.reject(new Error("Failed to fetch dynamically imported module")));
+    expect(m.default).toBe(NoPic);
   });
 });
