@@ -64,12 +64,8 @@ function load(): State {
       if (o.params) for (const id of Object.keys(s.params)) if (o.params[id]) s.params[id] = clean(id, o.params[id]);
     }
   } catch { /* private mode or bad JSON: defaults */ }
-  try {
-    const h = applyHash(s);
-    // consumed: otherwise a reload would put the link's values back over later edits
-    if (h !== s) clearHash();
-    return h;
-  } catch { return s; }   // a broken share link must not keep the app from starting
+  // the address bar always mirrors the design (syncHash), so a reload or a shared link reopens it
+  try { return applyHash(s); } catch { return s; }   // a broken share link must not keep the app from starting
 }
 
 /** Keep only known keys; migrate the old single "f" param (v0.1.0) to a one-band list. */
@@ -79,10 +75,6 @@ function clean(id: string, saved: Params): Params {
   for (const pd of def.params) out[pd.key] = sanitizeParam(pd, saved[pd.key]) ?? def.defaults[pd.key];
   if (typeof saved.f === "number" && saved.bands === undefined && "bands" in out) out.bands = `${saved.f}-${saved.f}`;
   return out;
-}
-
-export function clearHash() {
-  try { history.replaceState(null, "", location.pathname + location.search); } catch { /* ignore */ }
 }
 
 /** Share link: #t=yagi&f=145500000&n=9 … */
@@ -117,6 +109,22 @@ export function shareHash(s: State): string {
 let state: State = load();
 const subs = new Set<() => void>();
 
+/** Keep the share link in the address bar in step with the design. Debounced: Safari throttles replaceState
+ *  (~100 calls / 30 s) and a slider drag sets the state on every move. */
+let hashTimer: ReturnType<typeof setTimeout> | undefined;
+export function syncHash() {
+  clearTimeout(hashTimer);
+  hashTimer = undefined;
+  if (typeof location === "undefined" || typeof history === "undefined") return;
+  const h = shareHash(state);
+  if (location.hash === h) return;
+  try { history.replaceState(history.state, "", location.pathname + location.search + h); } catch { /* ignore */ }
+}
+function scheduleHash() {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(syncHash, 300);
+}
+
 export const get = () => state;
 export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) };
@@ -124,6 +132,7 @@ export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
     const { type, params, unit, lang, theme, showDims, showCase } = state;
     localStorage.setItem(KEY, JSON.stringify({ type, params, unit, lang, theme, showDims, showCase }));
   } catch { /* ignore */ }
+  scheduleHash();
   subs.forEach((f) => f());
 }
 /** `patch` with every value clamped to its ParamDef range (unknown keys and unusable values dropped). */
@@ -137,13 +146,6 @@ export function clampParams(id: string, patch: Params): Params {
   return out;
 }
 
-/** Put the share link in the address bar (clipboard blocked) and remove it again at the next state change:
- *  a leftover hash would be applied over later edits on reload. */
-export function showHashUntilEdit(hash: string) {
-  try { history.replaceState(null, "", hash); } catch { return; }
-  const f = () => { subs.delete(f); clearHash(); };
-  subs.add(f);
-}
 export function setParam(key: string, value: number | string) {
   if (key === "bands") return set((s) => ({ params: withBands(s.params, value) }));
   set((s) => ({ params: { ...s.params, [s.type]: { ...s.params[s.type], [key]: value } } }));
@@ -158,15 +160,15 @@ export function resetParams() {
   });
 }
 
-// A share link pasted into the address bar of the running app
+// A share link pasted or edited in the address bar of the running app; a broken one is replaced by the current design
 if (typeof window !== "undefined") {
+  syncHash();
   window.addEventListener("hashchange", () => {
     try {
       const n = applyHash(state);
-      if (n === state) return;
-      set({ type: n.type, params: n.params });
-      clearHash();
+      if (n !== state) set({ type: n.type, params: n.params });
     } catch { /* broken link: ignore */ }
+    syncHash();
   });
 }
 

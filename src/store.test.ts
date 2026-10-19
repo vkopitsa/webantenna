@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ANTENNAS } from "./lib/antennas";
-import { get, set, setParam, showHashUntilEdit } from "./store";
+import { get, set, setParam, shareHash } from "./store";
 
 describe("store: frequency bands", () => {
   it("a band edit applies to every antenna type", () => {
@@ -21,19 +21,28 @@ describe("store: frequency bands", () => {
 });
 
 describe("store: share link in the address bar", () => {
-  it("is removed again at the next state change", () => {
+  it("follows every state change (debounced) and round-trips", () => {
+    vi.useFakeTimers();
     const calls: string[] = [];
     const g = globalThis as unknown as { history?: unknown; location?: unknown };
     const old = { history: g.history, location: g.location };
-    g.history = { replaceState: (_a: unknown, _b: unknown, u: string) => calls.push(u) };
-    g.location = { pathname: "/x", search: "", hash: "" };
+    const loc = { pathname: "/x", search: "?a", hash: "" };
+    g.history = { state: null, replaceState: (_a: unknown, _b: unknown, u: string) => { calls.push(u); loc.hash = u.slice(u.indexOf("#")); } };
+    g.location = loc;
     try {
-      showHashUntilEdit("#t=yagi");
-      expect(calls).toEqual(["#t=yagi"]);
+      set({ type: "yagi" });
       setParam("d", 0.003);
-      expect(calls).toEqual(["#t=yagi", "/x"]);
-      setParam("d", 0.004);
-      expect(calls.length).toBe(2);
-    } finally { g.history = old.history; g.location = old.location; }
+      setParam("bands", "430e6-440e6");
+      expect(calls).toEqual([]);
+      vi.advanceTimersByTime(400);
+      expect(calls.length).toBe(1);
+      expect(calls[0].startsWith("/x?a#t=yagi&")).toBe(true);
+      const q = new URLSearchParams(loc.hash.slice(1));
+      expect(q.get("d")).toBe("0.003");
+      expect(q.get("bands")).toBe("430e6-440e6");
+      expect(calls[0].slice(calls[0].indexOf("#"))).toBe(shareHash(get()));
+      vi.advanceTimersByTime(400);
+      expect(calls.length).toBe(1);   // unchanged: no extra replaceState
+    } finally { vi.useRealTimers(); g.history = old.history; g.location = old.location; }
   });
 });
