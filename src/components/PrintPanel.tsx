@@ -11,6 +11,7 @@ import { fmtLen } from "../format";
 import { fmtMsg } from "../msg";
 import { download } from "../download";
 import { MeshView } from "./MeshView";
+import { StepList } from "./steps/StepList";
 
 /** "3D-printed parts" box in the Build tab: STL per part, all parts as a zip, and a preview. */
 export function PrintPanel({ def, params, design, base }: { def: AntennaDef; params: Params; design: Design; base: string }) {
@@ -72,7 +73,7 @@ export function PrintPanel({ def, params, design, base }: { def: AntennaDef; par
             {specs[sel] && (
               <div>
                 <h4>{t("How to use: {0}", t(specs[sel].title))}</h4>
-                <ol className="notes">{specs[sel].howTo.map((h, i) => <li key={i}>{fmtMsg(t, unit, h)}</li>)}</ol>
+                <StepList items={specs[sel].howTo} />
               </div>
             )}
           </div>

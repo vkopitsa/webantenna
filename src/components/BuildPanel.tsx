@@ -9,6 +9,7 @@ import { useT } from "../i18n";
 import { fmtLen } from "../format";
 import { fmtHz } from "../lib/units";
 import { fmtMsg } from "../msg";
+import { StepList } from "./steps/StepList";
 import { download } from "../download";
 import { PrintPanel } from "./PrintPanel";
 import { partsFor } from "../lib/print";
@@ -113,7 +114,7 @@ export function BuildPanel({ def, params, design }: { def: AntennaDef; params: P
 
       <div className="box">
         <h3>{t("Build steps")}</h3>
-        <ol className="notes">{pack.steps.map((x, i) => <li key={i}>{m(x)}</li>)}</ol>
+        <StepList items={pack.steps} />
       </div>
     </div>
   );

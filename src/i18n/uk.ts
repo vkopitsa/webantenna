@@ -1475,4 +1475,7 @@ export const UK: Record<string, string> = {
   "\"Simulate up to\" is limited to 10 times the top of your bands.": "\"Рахувати до\" обмежено 10-кратною верхньою межею ваших діапазонів.",
   "Above some frequency the solver's segment limit makes the extended part of the sweep coarse (fewer than 60 segments per wavelength): treat it as approximate.": "Вище певної частоти ліміт сегментів розв'язувача робить розширену частину розрахунку грубою (менше 60 сегментів на довжину хвилі): вважайте її наближеною.",
   "\"Simulate up to\" is above the top of this shape's precomputed sweep: the charts stop where it ends.": "\"Рахувати до\" вище за кінець попередньо порахованого діапазону цієї форми: графіки закінчуються там, де він завершується.",
+  "Step pictures": "Кроки в картинках",
+  "Reduced motion": "Без анімації",
+  "No scenes yet.": "Сцен ще немає.",
 };

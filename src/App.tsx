@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { ANTENNA_BY_ID } from "./lib/antennas";
 import { set, useStore, type MainTab, type Theme, type Unit } from "./store";
 import { LANGS, useT, type Lang } from "./i18n";
@@ -11,6 +11,10 @@ import { SimPanel } from "./components/SimPanel";
 import { SynthPanel } from "./components/SynthPanel";
 import { BuildPanel } from "./components/BuildPanel";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+
+/** ?stepgallery: dev review page of the build-step scenes (not linked from the UI; lazy, so the scenes stay out of the main chunk). */
+const STEP_GALLERY = typeof location !== "undefined" && new URLSearchParams(location.search).has("stepgallery");
+const Gallery = lazy(() => import("./components/steps/Gallery"));
 
 /** True on the narrow layout, where the sidebar is an off-canvas drawer. */
 function useMobile() {
@@ -58,6 +62,8 @@ export default function App() {
     return () => window.removeEventListener("keydown", k);
   }, [drawer]);
   useEffect(() => { document.title = `${t(def.name)} · ${t("Antenna Generator")}`; }, [def, t]);
+
+  if (STEP_GALLERY) return <Suspense fallback={null}><Gallery /></Suspense>;
 
   return (
     <div className="app">

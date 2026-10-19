@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState, type RefObjec
 import { createPortal } from "react-dom";
 import { useT } from "../../i18n";
 import { Timed, type Scene, type T } from "./kit";
+import type { SceneId } from "./registry";
 
 type Svg = Pick<SVGSVGElement, "pauseAnimations" | "unpauseAnimations" | "setCurrentTime">;
 
@@ -90,7 +91,7 @@ const Loaded = lazy(() => import("./scenes/index").then(({ SCENES }) => ({
 })));
 
 /** A build step's looping picture (lazy chunk); click or Enter enlarges it. */
-export function StepPic(props: { id: string; title: string }) {
+export function StepPic(props: { id: SceneId; title: string }) {
   return (
     <Suspense fallback={<div className="step-pic" />}>
       <Loaded {...props} />

@@ -364,8 +364,7 @@ tr.pinned td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .dim-bg { fill: var(--chart-bg); opacity: 0.85; }
 
 /* build steps with pictures */
-.steps li { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; }
-.steps li > :only-child { grid-column: 1 / -1; }
+.steps li.has-pic { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; }
 .step-pic { display: block; width: 140px; height: 105px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: zoom-in; overflow: hidden; }
 .step-pic .step-svg { display: block; width: 100%; height: 100%; }
 .step-big { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); cursor: zoom-out; }
@@ -374,6 +373,13 @@ tr.pinned td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .step-big figcaption { margin-top: 8px; color: var(--fg); }
 .step-close { position: absolute; top: 6px; right: 6px; }
 @media (max-width: 600px) {
-  .steps li { grid-template-columns: minmax(0, 1fr); }
+  .steps li.has-pic { grid-template-columns: minmax(0, 1fr); }
   .step-pic { width: 100%; max-width: 320px; height: auto; aspect-ratio: 4 / 3; }
 }
+
+/* ?stepgallery: dev review of the build-step scenes */
+.gallery { padding-bottom: 16px; }
+.gallery > .hint { padding: 0 12px; }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, 344px); gap: 12px; padding: 12px; }
+.gallery-pic { width: 320px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+.gallery-pic .step-svg { display: block; width: 320px; height: auto; }
