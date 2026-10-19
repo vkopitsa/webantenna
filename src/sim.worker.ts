@@ -5,7 +5,7 @@ import type { Params } from "./lib/types";
 import { synthesize, type SynthOptions } from "./lib/synth";
 import { fieldSolver, type FieldPlane } from "./lib/nearfield";
 
-export interface SimRequest { id: number; type: string; params: Params; patternF?: number; synth?: undefined; field?: undefined }
+export interface SimRequest { id: number; type: string; params: Params; patternF?: number; fTop?: number; synth?: undefined; field?: undefined }
 export interface SynthRequest { id: number; synth: SynthOptions; field?: undefined }
 export interface FieldRequest { id: number; field: { type: string; params: Params; plane: FieldPlane }; synth?: undefined }
 
@@ -34,13 +34,13 @@ self.onmessage = (e: MessageEvent<SimRequest | SynthRequest | FieldRequest>) => 
     }
     return;
   }
-  const { id, type, params, patternF } = e.data as SimRequest;
+  const { id, type, params, patternF, fTop } = e.data as SimRequest;
   try {
     const def = ANTENNA_BY_ID[type];
     const d = def.build(params);
     let last = 0;
     const result = simulate(def, params, d, {
-      patternF,
+      patternF, fTop,
       onProgress: (a, b) => { const now = Date.now(); if (now - last > 80) { last = now; postMessage({ id, progress: a / b }); } },
     });
     postMessage({ id, result });

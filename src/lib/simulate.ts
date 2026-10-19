@@ -54,6 +54,34 @@ export function sweepFreqs(d: Design, perBand = 21, exact = false): number[] {
   return [...new Set(out)].sort((a, b) => a - b);
 }
 
+/** Longest extension of the sweep above the bands, as a multiple of the highest sweep stop. */
+export const SIM_TOP_MAX_RATIO = 10;
+
+/**
+ * "Simulate up to": the effective top frequency (Hz) of the extension, or 0 when off / not above the sweeps / unusable.
+ * Clamped to SIM_TOP_MAX_RATIO times the highest sweep stop.
+ */
+export function simTopOf(d: Design, fTop: number | undefined): { top: number; clamped: boolean } {
+  const hi = Math.max(0, ...d.sweeps.map((s) => s.stop));
+  if (!(fTop != null && Number.isFinite(fTop) && hi > 0 && fTop > hi * 1.001)) return { top: 0, clamped: false };
+  const cap = hi * SIM_TOP_MAX_RATIO;
+  return { top: Math.min(fTop, cap), clamped: fTop > cap };
+}
+
+/** Extension points above `from` up to `top` (included): log spaced, about 20 per octave, 2…60 points. */
+export function extensionFreqs(from: number, top: number): number[] {
+  if (!(top > from * 1.001)) return [];
+  const n = Math.min(60, Math.max(2, Math.ceil(Math.log2(top / from) * 20)));
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? top : from * (top / from) ** ((i + 1) / n)));
+}
+
+/** `freqs` plus the extension up to `top` (0 = none). */
+function withExtension(freqs: number[], d: Design, top: number): number[] {
+  if (!top) return freqs;
+  const hi = Math.max(...d.sweeps.map((s) => s.stop));
+  return [...freqs, ...extensionFreqs(hi, top)];
+}
+
 /**
  * Indices i where frequency fs[i] starts a new piece of line: fs[i − 1] and fs[i] both lie in sweeps but in no
  * common one (separate bands with nothing computed between them). Points outside every sweep never break.
@@ -277,6 +305,8 @@ function loopSim(params: Params, d: Design, freqs: number[], fPat: number): SimR
 
 const SKYCONE_OUT = "Your bands go above the top of this shape's precomputed sweep: the charts stop where it ends. Lower the bands or pick a sky-tilted bicone with a wider ratio (the 21:1 one covers the most).";
 
+const SKYCONE_TOP_OUT = "\"Simulate up to\" is above the top of this shape's precomputed sweep: the charts stop where it ends.";
+
 const SKYCONE_BARE = "Bare coax: the impedance includes the cable's outside as part of the antenna (precomputed with a straight cable of the length in Dimensions, no ferrite). The pattern is the free-space one without a cable.";
 
 const SKYCONE_WIRE_CLAMP = "Your wire is thinner or thicker (for this size) than the precomputed diameters: the Simulation uses the nearest one.";
@@ -287,7 +317,7 @@ const SKYCONE_CAGE = "Sky-tilted bicone, wire cage: precomputed NEC-2 sweeps of 
 
 /** Sky-tilted bicones: the study's body-of-revolution MoM sweep, scaled to the design's lowest frequency; wire cages
  *  and S40 read at the design's wire diameter. */
-function skyconeSim(defId: string, d: Design, fPat: number): SimResult {
+function skyconeSim(defId: string, d: Design, fPat: number, fTop = 0): SimResult {
   const t0 = SKYCONE_TABLES[defId], s = d.sweeps[0], w = d.skyconeWire;
   const t = w ? tableAt(t0, w.dRef).t : t0;
   // the geometry's wire differs from the base whenever the table Ø does, or it was clamped (outside the tables, which
@@ -296,14 +326,15 @@ function skyconeSim(defId: string, d: Design, fPat: number): SimResult {
   const [lo, hi] = skyconeRange(t, s.start);
   const z: ZPoint[] = [];
   // every table row inside the sweep (log-spaced, about 25 per octave), plus the sweep ends
-  const fs = [s.start, ...t.f.map((u) => u * s.start).filter((f) => f > s.start && f < s.stop), s.stop].filter((f) => f >= lo && f <= hi);
+  const stop = Math.max(s.stop, fTop);
+  const fs = [s.start, ...t.f.map((u) => u * s.start).filter((f) => f > s.start && f < stop), stop].filter((f) => f >= lo && f <= hi);
   const bare = d.coax?.bare?.row;
   for (const f of fs) { const q = skyconeZ(t, s.start, f, bare); if (q) z.push({ f, ...q }); }
   const fp = Math.min(Math.max(fPat, lo), hi);
   const g = skyconeGain(t, s.start, fp);
   return {
     method: "analytic", z, pattern: samplePattern(fp, (th) => g(th)),
-    notes: [...(s.stop > hi * 1.001 ? [SKYCONE_OUT] : []), ...(bare != null ? [SKYCONE_BARE] : []), ...wireNotes, t.cage
+    notes: [...(s.stop > hi * 1.001 ? [SKYCONE_OUT] : fTop > hi * 1.001 ? [SKYCONE_TOP_OUT] : []), ...(bare != null ? [SKYCONE_BARE] : []), ...wireNotes, t.cage
       ? SKYCONE_CAGE
       : t.short
       ? "Sky-tilted bicone, sheet metal with a shorting wire: precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the wire; free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones."
@@ -329,11 +360,30 @@ export interface SimOptions {
   patternF?: number;
   /** Max points per band for the impedance sweep. */
   perBand?: number;
+  /** "Simulate up to" (Hz): extends the impedance sweep above the bands; the design is not changed. 0 / absent = off. */
+  fTop?: number;
   onProgress?: (done: number, total: number) => void;
 }
 
+const SIM_EXT = "Sweep extended above your bands to the \"Simulate up to\" frequency; the antenna is designed for the bands only.";
+const SIM_EXT_CLAMP = "\"Simulate up to\" is limited to 10 times the top of your bands.";
+const SIM_EXT_COARSE = "Above some frequency the solver's segment limit makes the extended part of the sweep coarse (fewer than 60 segments per wavelength): treat it as approximate.";
+
 export function simulate(def: AntennaDef, params: Params, d: Design, opt: SimOptions = {}): SimResult {
-  const freqs = def.id === "patch" || def.id === "cppatch" || def.id === "airpatch" || def.id === "patcharray" ? sweepFreqs(d, 101, true) : sweepFreqs(d, opt.perBand ?? 21);
+  const { top, clamped } = simTopOf(d, opt.fTop);
+  const res = simulateSweep(def, params, d, opt, top);
+  if (!top || !res.z.length) return res;
+  const notes = [...res.notes, SIM_EXT];
+  if (clamped) notes.push(SIM_EXT_CLAMP);
+  if (res.method === "mom") {
+    const len = d.wires.filter((w) => !w.drawOnly).reduce((a, w) => a + Math.hypot(w.a[0] - w.b[0], w.a[1] - w.b[1], w.a[2] - w.b[2]), 0);
+    if (len > 0 && top > (450 * 299792458) / (60 * len)) notes.push(SIM_EXT_COARSE);
+  }
+  return { ...res, notes };
+}
+
+function simulateSweep(def: AntennaDef, params: Params, d: Design, opt: SimOptions, top: number): SimResult {
+  const freqs = withExtension(def.id === "patch" || def.id === "cppatch" || def.id === "airpatch" || def.id === "patcharray" ? sweepFreqs(d, 101, true) : sweepFreqs(d, opt.perBand ?? 21), d, top);
   const fPat = opt.patternF ?? d.f;
   if (def.id === "patch") return patchSim(params, d, freqs, fPat);
   if (def.id === "cppatch") return cpPatchSim(params, d, freqs, fPat);
@@ -341,8 +391,8 @@ export function simulate(def: AntennaDef, params: Params, d: Design, opt: SimOpt
   if (def.id === "patcharray") return patchArraySim(params, d, freqs, fPat);
   if (def.id === "collinear") return collinearSim(params, d, fPat);
   if (def.id === "pcbcollinear") return pcbCollinearSim(params, d, fPat);
-  if (def.id === "pcbloop") return loopSim(params, d, sweepFreqs(d, 101, true), fPat);
-  if (SKYCONE_TABLES[def.id]) return skyconeSim(def.id, d, fPat);
+  if (def.id === "pcbloop") return loopSim(params, d, withExtension(sweepFreqs(d, 101, true), d, top), fPat);
+  if (SKYCONE_TABLES[def.id]) return skyconeSim(def.id, d, fPat, top);
   if (d.pcb) return { method: "openems", z: [], pattern: null, notes: ["Printed antenna on a dielectric: the wire solver cannot model it. Run the FDTD above, or export the openEMS script and load its results file here."] };
   if (!d.necSupported) return { method: "none", z: [], pattern: null, notes: [] };
   const z: ZPoint[] = [];
@@ -412,6 +462,10 @@ export const SIM_STRINGS = [
   "Small loop: analytic model (matched with Cs + Cp at the design frequency; magnetic-dipole pattern, efficiency included).",
   "Sky-tilted bicone: precomputed body-of-revolution MoM sweep of this shape (solid sheet metal, free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones.",
   SKYCONE_OUT,
+  SKYCONE_TOP_OUT,
+  SIM_EXT,
+  SIM_EXT_CLAMP,
+  SIM_EXT_COARSE,
   SKYCONE_BARE,
   SKYCONE_WIRE_CLAMP,
   SKYCONE_WIRE_DETUNE,

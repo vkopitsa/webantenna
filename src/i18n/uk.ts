@@ -1469,4 +1469,10 @@ export const UK: Record<string, string> = {
   "The stop holes sit at the recipe angles on the engraved lines (every 15°, longer at 45°, 90°, 135° and 180°).": "Отвори для упору стоять на кутах рецепта на вигравіюваних лініях (кожні 15°, довші на 45°, 90°, 135° і 180°).",
   "Lay the wire through the groove in the block, between the trap pin and the die, with the cut end past the die and the mark on the engraved line across the wire at the die.": "Покладіть дріт крізь паз у колодці, між притискним штифтом і оправкою, відрізаним кінцем за оправку, а позначку — на вигравіювану лінію впоперек дроту біля оправки.",
   "Bend the free end round the die by hand until it rests against the stop bolt. Copper springs back: press 2–5° past it and check the angle against the engraved lines or the groove plate.": "Загніть вільний кінець руками навколо оправки, доки він не впреться в болт-упор. Мідь пружинить: дотисніть на 2–5° далі й перевірте кут за вигравіюваними лініями або згинальною плитою.",
+  "Simulate up to": "Рахувати до",
+  "Extends the sweep above your bands; the antenna is not changed": "Розширює розрахунок вище ваших діапазонів; антена не змінюється",
+  "Sweep extended above your bands to the \"Simulate up to\" frequency; the antenna is designed for the bands only.": "Розрахунок розширено вище ваших діапазонів до частоти \"Рахувати до\"; антена розрахована лише на діапазони.",
+  "\"Simulate up to\" is limited to 10 times the top of your bands.": "\"Рахувати до\" обмежено 10-кратною верхньою межею ваших діапазонів.",
+  "Above some frequency the solver's segment limit makes the extended part of the sweep coarse (fewer than 60 segments per wavelength): treat it as approximate.": "Вище певної частоти ліміт сегментів розв'язувача робить розширену частину розрахунку грубою (менше 60 сегментів на довжину хвилі): вважайте її наближеною.",
+  "\"Simulate up to\" is above the top of this shape's precomputed sweep: the charts stop where it ends.": "\"Рахувати до\" вище за кінець попередньо порахованого діапазону цієї форми: графіки закінчуються там, де він завершується.",
 };

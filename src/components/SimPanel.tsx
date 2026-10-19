@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { AntennaDef, Design, Params } from "../lib/types";
-import { interpZ, patternChoices, s11, sweepBreaks, toS1P, type SimResult, type ZPoint } from "../lib/simulate";
+import { interpZ, patternChoices, s11, SIM_TOP_MAX_RATIO, sweepBreaks, toS1P, type SimResult, type ZPoint } from "../lib/simulate";
 import { parseBands } from "../lib/bands";
 import { parseOpenEMS, parseTouchstone, type Imported } from "../lib/importers";
-import { fmtHz } from "../lib/units";
+import { fmtHz, parseHz } from "../lib/units";
 import { useT } from "../i18n";
 import { useSimulation } from "../useSimulation";
 import { CursorReadout } from "./CursorReadout";
@@ -36,14 +36,33 @@ function bandSummary(z: ZPoint[], z0: number, bands: [number, number][]) {
   });
 }
 
+/** "Simulate up to": frequency text (a bare number is GHz), empty = off. Commits on Enter/blur. */
+function SimTopInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const t = useT();
+  const [draft, setDraft] = useState<string | null>(null);
+  const [bad, setBad] = useState(false);
+  const commit = () => {
+    if (draft == null) return;
+    const txt = draft.trim();
+    const v = txt === "" ? 0 : parseHz(txt, [1e9, 1e6], 1, 1e12);
+    if (v == null || v < 0) { setBad(true); return; }
+    setBad(false); setDraft(null);
+    if (v !== value) onChange(v);
+  };
+  return <input type="text" inputMode="decimal" size={9} className={bad ? "bad" : ""} aria-invalid={bad || undefined} aria-label={t("Simulate up to")} placeholder="GHz"
+    title={t("Extends the sweep above your bands; the antenna is not changed")}
+    value={draft ?? (value > 0 ? fmtHz(value, 3) : "")} onChange={(e) => setDraft(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === "Enter" && commit()} />;
+}
+
 export function SimPanel({ def, params, design, active = true }: { def: AntennaDef; params: Params; design: Design; active?: boolean }) {
   const t = useT();
+  const simTop = useStore((s) => s.simTop);
   const choices = useMemo(() => patternChoices(params, design), [params, design]);
   const [pf, setPf] = useState<number | null>(null);
   const patternF = pf != null && choices.some((c) => Math.abs(c - pf) < 1) ? pf : choices[0];
   const [z0s, setZ0] = useState<string | null>(null);
   const z0 = Number(z0s ?? String(Math.round(design.feedZ0 ?? 50)));
-  const sim = useSimulation(def.id, params, patternF, active);
+  const sim = useSimulation(def.id, params, patternF, active, simTop);
   const fdtd = useFdtd();
   const [engine, setEngine] = useState<Engine>("auto");
   const fdKey = JSON.stringify([def.id, params]);
@@ -82,7 +101,8 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [own, imp, design.sweeps, win?.[0], win?.[1]]);
   // x axis: the selected band's window, or every band (parts the model doesn't reach stay visible, empty)
-  const span = win ?? (bands.length ? [Math.min(...bands.map((b) => b[0])), Math.max(...bands.map((b) => b[1]))] as const : undefined);
+  const bandTop = bands.length ? Math.max(...bands.map((b) => b[1])) : 0;
+  const span = win ?? (bands.length ? [Math.min(...bands.map((b) => b[0])), Math.max(bandTop, Math.min(simTop, bandTop * SIM_TOP_MAX_RATIO))] as const : undefined);
   const ser = (fn: (p: ZPoint) => number, raw?: (p: ZPoint) => number): Series[] => curves.map((c) => ({ name: c.name, cls: c.cls, f: c.z.map((p) => p.f), values: c.z.map(fn), raw: raw && c.z.map(raw), breaks: c.breaks }));
   const zMain = curves[0];
   const arSeries: Series[] = r?.ar && !fdOut ? [{ name: t("Axial ratio (dB)"), cls: "s1", f: clip2(r.ar).map((p) => p.f), values: clip2(r.ar).map((p) => Math.min(p.dB, 20)), raw: clip2(r.ar).map((p) => p.dB) }] : [];
@@ -125,6 +145,7 @@ export function SimPanel({ def, params, design, active = true }: { def: AntennaD
         )}
         {r?.unknowns != null && <span className="muted small">{t("{0} unknowns", r.unknowns)}</span>}
         <span className="spacer" />
+        <label className="inline" title={t("Extends the sweep above your bands; the antenna is not changed")}>{t("Simulate up to")}<SimTopInput value={simTop} onChange={(v) => set({ simTop: v })} /></label>
         <label className="inline">{t("Reference Z0")}<Select value={String(z0)} options={Z0S.some(([v]) => Number(v) === z0) ? Z0S : [[String(z0), `${z0} Ω`], ...Z0S]} onChange={setZ0} ariaLabel="Reference Z0" /></label>
         {choices.length > 1 && <label className="inline">{t("Pattern at")}<Select value={String(patternF)} options={choices.map((c) => [String(c), fmtHz(c, 3)] as [string, string])} onChange={(v) => setPf(Number(v))} ariaLabel="Pattern at" /></label>}
         <button className="small" onClick={() => fileRef.current?.click()}>{t("Load results (.json / .s1p / .s2p)")}</button>

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Params } from "./types";
 import { ANTENNA_BY_ID } from "./antennas";
 import { buildMesh, cpGainFn, gainFn, solve } from "./mom";
 import { s11, simulate, sweepBreaks, sweepFreqs, toS1P } from "./simulate";
@@ -156,5 +157,41 @@ describe("sky-cone wire diameter", () => {
   it("cage Ø outside the tables is noted", () => {
     expect(sim("skyconecage", 5e-3).notes).toContain(CLAMP);
     expect(sim("skyconecage", 0.8e-3).notes).not.toContain(CLAMP);
+  });
+});
+
+describe("Simulate up to (fTop)", () => {
+  const go = (id: string, extra: Params, fTop?: number) => {
+    const def = ANTENNA_BY_ID[id], p = { ...def.defaults, ...extra }, d = def.build(p);
+    return { d, r: simulate(def, p, d, { fTop }) };
+  };
+  const last = (z: { f: number }[]) => z[z.length - 1].f;
+  it("dipole (MoM): extends the sweep to fTop, bands and design unchanged", () => {
+    const base = go("dipole", {}), ext = go("dipole", {}, 2 * last(base.r.z));
+    expect(last(ext.r.z)).toBeCloseTo(2 * last(base.r.z), 0);
+    expect(ext.r.z.length).toBeGreaterThan(base.r.z.length);
+    expect(ext.r.z.length - base.r.z.length).toBeLessThanOrEqual(60);
+    expect(ext.r.z.slice(0, base.r.z.length)).toEqual(base.r.z);
+    expect(ext.d.sweeps).toEqual(base.d.sweeps);
+    expect(ext.r.notes.some((n) => n.startsWith("Sweep extended"))).toBe(true);
+    expect(base.r.notes.some((n) => n.startsWith("Sweep extended"))).toBe(false);
+  });
+  it("is clamped to 10x the bands and ignored when not above them", () => {
+    const base = go("dipole", {}), top = last(base.r.z);
+    expect(last(go("dipole", {}, 100 * top).r.z)).toBeCloseTo(10 * top, 0);
+    expect(go("dipole", {}, 100 * top).r.notes.some((n) => n.includes("limited to 10 times"))).toBe(true);
+    expect(go("dipole", {}, top * 0.5).r).toEqual(base.r);
+    expect(go("dipole", {}, 0).r).toEqual(base.r);
+  });
+  it("patch: extends to fTop", () => {
+    const base = go("patch", {}), ext = go("patch", {}, 1.5 * last(base.r.z));
+    expect(last(ext.r.z)).toBeCloseTo(1.5 * last(base.r.z), 0);
+    expect(ext.r.z.slice(0, base.r.z.length)).toEqual(base.r.z);
+  });
+  it("skyconecage44: default bands plus fTop 7.2 GHz reaches 7.2 GHz", () => {
+    const base = go("skyconecage44", {}), ext = go("skyconecage44", {}, 7.2e9);
+    expect(last(ext.r.z)).toBeCloseTo(7.2e9, -6);
+    expect(last(base.r.z)).toBeLessThan(7.2e9);
+    expect(go("skyconecage44", {}, undefined).r).toEqual(base.r);
   });
 });

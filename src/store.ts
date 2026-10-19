@@ -28,6 +28,8 @@ export interface State {
   showDims: boolean;
   /** Draw the printable case round the antenna in the Preview (persisted). */
   showCase: boolean;
+  /** Simulation tab: extend the sweep up to this frequency (Hz, 0 = off); persisted, not part of the design or the share link. */
+  simTop: number;
 }
 
 /** Default 3D camera angles (degrees). */
@@ -47,6 +49,7 @@ const defaults = (): State => ({
   pitch: DEFAULT_PITCH,
   showDims: false,
   showCase: false,
+  simTop: 0,
 });
 
 function load(): State {
@@ -61,6 +64,7 @@ function load(): State {
       if (o.theme === "auto" || o.theme === "light" || o.theme === "dark") s.theme = o.theme;
       if (typeof o.showDims === "boolean") s.showDims = o.showDims;
       if (typeof o.showCase === "boolean") s.showCase = o.showCase;
+      if (typeof o.simTop === "number" && Number.isFinite(o.simTop) && o.simTop > 0) s.simTop = o.simTop;
       if (o.params) for (const id of Object.keys(s.params)) if (o.params[id]) s.params[id] = clean(id, o.params[id]);
     }
   } catch { /* private mode or bad JSON: defaults */ }
@@ -129,8 +133,8 @@ export const get = () => state;
 export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) };
   try {
-    const { type, params, unit, lang, theme, showDims, showCase } = state;
-    localStorage.setItem(KEY, JSON.stringify({ type, params, unit, lang, theme, showDims, showCase }));
+    const { type, params, unit, lang, theme, showDims, showCase, simTop } = state;
+    localStorage.setItem(KEY, JSON.stringify({ type, params, unit, lang, theme, showDims, showCase, simTop }));
   } catch { /* ignore */ }
   scheduleHash();
   subs.forEach((f) => f());
