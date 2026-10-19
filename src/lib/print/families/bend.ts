@@ -55,7 +55,7 @@ export const BEND_HOWTO: { plate: string[]; corner: string[]; mandrel: string[];
   ],
 };
 
-const D_MAX = 3;      // thicker wire is not bent in a printed jig
+export const D_MAX = 3;      // thicker wire is not bent in a printed jig
 const MARGIN = 4;     // plastic round the groove, as skycone-bend
 
 const LEAD = 1;       // mm: an open groove's stop faces along the path from its start to the first point this far away

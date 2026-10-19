@@ -90,18 +90,18 @@ describe("flatten / filleted / signature", () => {
     for (const q of g.path) { expect(q[0]).toBeGreaterThanOrEqual(-1e-9); expect(q[0]).toBeLessThanOrEqual(60 + 1e-9); expect(q[1]).toBeGreaterThanOrEqual(-1e-9); expect(q[1]).toBeLessThanOrEqual(2 + 1e-9); }
   });
   it("open paths: a 4-point Z flattens; an end lifted 5 mm off the plane does not", () => {
-    const z = (h: number): BendPath => ({ pts: [[0, 0, 0], [30, 0, 0], [30, 20, 0], [60, 20, h]], closed: false, d: 1.5, group: "" });
+    const z = (h: number): BendPath => ({ pts: [[0, 0, 0], [30, 0, 0], [30, 20, 0], [60, 20, h]], closed: false, d: 1.5, group: "", wires: [] });
     const f = flatten(z(0))!;
     expect(f).not.toBeNull();
     expect(f.corners).toEqual([1, 2]);
     expect(flatten(z(5))).toBeNull();
-    const u: BendPath = { pts: [[0, 20, 0], [0, 0, 0], [30, 0, 0], [30, 20, 0]], closed: false, d: 1.5, group: "" };
+    const u: BendPath = { pts: [[0, 20, 0], [0, 0, 0], [30, 0, 0], [30, 20, 0]], closed: false, d: 1.5, group: "", wires: [] };
     expect(flatten(u)!.corners).toEqual([1, 2]);
-    const five: BendPath = { pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [20, 10, 5]], closed: false, d: 1.5, group: "" };
+    const five: BendPath = { pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [20, 10, 5]], closed: false, d: 1.5, group: "", wires: [] };
     expect(flatten(five)).toBeNull();   // free end 5 mm off the plane of the interior
   });
   it("open paths: an end may sit off the plane by up to half its segment (a feed lead), not more", () => {
-    const tail = (h: number): BendPath => ({ pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [30, 10, h]], closed: false, d: 1.5, group: "" });
+    const tail = (h: number): BendPath => ({ pts: [[0, 0, 0], [10, 0, 0], [10, 10, 0], [20, 10, 0], [30, 10, h]], closed: false, d: 1.5, group: "", wires: [] });
     expect(flatten(tail(4))).not.toBeNull();   // 4 mm off on a 10.8 mm segment
     expect(flatten(tail(8))).toBeNull();       // 8 mm off on a 12.8 mm segment
   });

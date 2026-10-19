@@ -3,7 +3,7 @@ import { CLEAR, mm } from "./rules";
 import type { V3 } from "./shapes";
 
 /** A wire centre line to bend, in mm: a chain of wires through nodes of degree 2. Closed paths do not repeat the start point. */
-export interface BendPath { pts: V3[]; closed: boolean; d: number; group: string }
+export interface BendPath { pts: V3[]; closed: boolean; d: number; group: string; /** indices into Design.wires of the chain */ wires: number[] }
 
 const TURN_MIN = 1;   // degrees; below this the path is a straight rod
 
@@ -17,6 +17,7 @@ export function bendPaths(d: Design): BendPath[] {
   const feedEnds = d.wires.filter((w) => w.group === "feed" && !w.necOnly).flatMap((w) => [w.b, w.a]).map(key);
   const at = new Map<string, number[]>();   // kind@node → wire indices
   const k2 = (i: number, p: number[]) => `${kind(es[i])}@${key(p)}`;
+  const orig = d.wires.map((w, i) => ({ w, i })).filter(({ w }) => w.group !== "feed" && !w.necOnly && !w.drawOnly && len(w) > 0).map(({ i }) => i);   // es index → d.wires index
   es.forEach((w, i) => { for (const p of [w.a, w.b]) (at.get(k2(i, p)) ?? at.set(k2(i, p), []).get(k2(i, p))!).push(i); });
   const used = new Set<number>(), out: BendPath[] = [];
   const other = (i: number, k: string) => (key(es[i].a) === k ? es[i].b : es[i].a);
@@ -35,9 +36,10 @@ export function bendPaths(d: Design): BendPath[] {
     if (closed) { i = i0; k = key(w0.a); }
     const pts: V3[] = [], start = closed ? (es[i].a) : (key(es[i].a) === k ? es[i].a : es[i].b);
     pts.push(start.map(mm) as V3);
+    const chain: number[] = [];
     let node = start, j: number | null = i;
     while (j != null && !used.has(j)) {
-      used.add(j);
+      used.add(j); chain.push(orig[j]);
       node = other(j, key(node));
       const nk = key(node);
       j = next(j, nk);
@@ -56,7 +58,7 @@ export function bendPaths(d: Design): BendPath[] {
     const n = pts.length, turn = (m: number) => ang(pts[(m + n - 1) % n], pts[m], pts[(m + 1) % n]);
     let bent = false;
     for (let m = closed ? 0 : 1; m < (closed ? n : n - 1); m++) if (turn(m) > TURN_MIN) bent = true;
-    if (n >= 3 && bent) out.push({ pts, closed, d: 2 * w0.r * 1000, group: w0.group ?? "" });
+    if (n >= 3 && bent) out.push({ pts, closed, d: 2 * w0.r * 1000, group: w0.group ?? "", wires: chain });
   });
   return out;
 }
@@ -67,7 +69,7 @@ export interface Flat { pts: P2[]; closed: boolean; d: number; corners: number[]
 /** Filleted centre line plus the pegs (inner side of each filleted corner, i = its vertex) that hold it; at[i] = index of vertex i's first path point. */
 export interface Groove { path: P2[]; pegs: { c: P2; r: number; i: number }[]; at: number[] }
 
-const CORNER = 20;   // degrees
+export const CORNER = 20;   // degrees
 const DEG = Math.PI / 180;
 const turn2 = (a: P2, b: P2, c: P2) => {
   const u = [b[0] - a[0], b[1] - a[1]], v = [c[0] - b[0], c[1] - b[1]];
