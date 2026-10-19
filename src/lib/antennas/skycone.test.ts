@@ -427,6 +427,14 @@ describe("wire diameter param", () => {
     expect(d.frames!.hoops.hot.every((q) => q[0] > R + 1e-4)).toBe(true);
   });
 
+  it("a wire Ø beyond the param's bounds is clamped to them", () => {
+    const d = ANTENNA_BY_ID.skyconecage.build({ bands: "960e6-6400e6", d: 12e-3 });
+    for (const c of d.cuts!.filter((x) => x.what.includes("frame"))) expect(c.dia).toBeCloseTo(5e-3, 12);
+    for (const h of hubRadii(d)) expect(h).toBeCloseTo(hubFor(16, 5e-3), 12);
+    const thin = ANTENNA_BY_ID.skyconecage.build({ bands: "960e6-6400e6", d: 0.01e-3 });
+    expect(thin.cuts!.find((x) => x.what.startsWith("Hot frame"))!.dia).toBeCloseTo(0.2e-3, 12);
+  });
+
   it("S40: the shorting wire Ø changes, the sheet doesn't", () => {
     const def = ANTENNA_BY_ID.skycone40, a = def.build({ bands: "1400e6-6400e6" }), b = def.build({ bands: "1400e6-6400e6", d: 0.5e-3 });
     expect(b.wires.find((w) => w.tag === "S")!.r).toBeCloseTo(0.25e-3, 12);

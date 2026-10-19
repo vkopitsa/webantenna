@@ -290,7 +290,9 @@ const SKYCONE_CAGE = "Sky-tilted bicone, wire cage: precomputed NEC-2 sweeps of 
 function skyconeSim(defId: string, d: Design, fPat: number): SimResult {
   const t0 = SKYCONE_TABLES[defId], s = d.sweeps[0], w = d.skyconeWire;
   const t = w ? tableAt(t0, w.dRef).t : t0;
-  const wireNotes = w ? [...(w.clamped ? [SKYCONE_WIRE_CLAMP] : []), ...(Math.abs(w.dRef - baseWire(t0)) > 1e-6 * baseWire(t0) ? [SKYCONE_WIRE_DETUNE] : [])] : [];
+  // the geometry's wire differs from the base whenever the table Ø does, or it was clamped (outside the tables, which
+  // hold the base) or capped (A55 at its coil, read at the base table)
+  const wireNotes = w ? [...(w.clamped ? [SKYCONE_WIRE_CLAMP] : []), ...(w.clamped || w.capped || Math.abs(w.dRef - baseWire(t0)) > 1e-6 * baseWire(t0) ? [SKYCONE_WIRE_DETUNE] : [])] : [];
   const [lo, hi] = skyconeRange(t, s.start);
   const z: ZPoint[] = [];
   // every table row inside the sweep (log-spaced, about 25 per octave), plus the sweep ends

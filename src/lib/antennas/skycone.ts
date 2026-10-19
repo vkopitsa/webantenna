@@ -56,6 +56,7 @@ export const hubFor = (n: number, dRef: number): number => Math.max(3e-3, (n * d
 
 /** Wire diameter (m) a wire cage or S40 gets without a `d` param (old saved designs), the same at every size. */
 const WIRE_D = 1e-3;
+const WIRE_P: ParamDef = { key: "d", label: "Wire diameter", kind: "length", min: 0.2e-3, max: 5e-3 };
 /** A55: the thickest wire (m, reference scale) its coiled shorting wires can be wound from, min(coil Ø / 3,
  *  0.8 · pitch) with the pitch = the shorting wire's height / turns; Infinity without coils. */
 export function coilLimit(t: SkyconeTable): number {
@@ -67,7 +68,8 @@ export function coilLimit(t: SkyconeTable): number {
  *  coil), the table read at it (clamped to the tabulated diameters) and the Design.skyconeWire record. */
 function wireOf(t: SkyconeTable, p: Params, s: number) {
   const d = num(p, "d", WIRE_D);
-  let dGeo = (d > 0 ? d : WIRE_D) / s;
+  // the param's bounds (synthesis passes its own element Ø, e.g. 12 mm)
+  let dGeo = Math.min(WIRE_P.max!, Math.max(WIRE_P.min!, d > 0 ? d : WIRE_D)) / s;
   const capped = dGeo > coilLimit(t);
   if (capped) dGeo = coilLimit(t);
   const at = tableAt(t, dGeo);
@@ -327,10 +329,10 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
     perf: tablePerf(wd?.tab ?? t, bands, fLow, bare ? "Worst SWR in your bands (precomputed MoM, bare cable)" : "Worst SWR in your bands (precomputed MoM, no cable)", bare?.row),
     notes: [
       sw
-        ? "The mini wire cage's shape made from brass or copper sheet: Ø39 × 40 mm, hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket, and one straight Ø1 mm shorting wire from the hot cone down to the ground cone. A box this small is below the Chu limit for 960 MHz, so the band starts at 1.4 GHz; the wire works as an inductor across the feed and lifts the low resistance at the bottom of the band to about 50 Ω. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
+        ? "The mini wire cage's shape made from brass or copper sheet: Ø39 × 40 mm, hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket, and one straight shorting wire (Ø1 mm by default) from the hot cone down to the ground cone. A box this small is below the Chu limit for 960 MHz, so the band starts at 1.4 GHz; the wire works as an inductor across the feed and lifts the low resistance at the bottom of the band to about 50 Ω. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
         : "Hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation).",
       sw
-        ? "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the shorting wire), scaled to your size."
+        ? "The shape is fixed (it was optimised as a whole for a Ø1 mm shorting wire at 1.4 GHz); all dimensions scale with your lowest frequency, but the shorting wire is the diameter you set (Ø1 mm by default). The Simulation tab shows the precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the shorting wire at your diameter), scaled to your size."
         : "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency. The Simulation tab shows the precomputed body-of-revolution MoM sweep of this shape, scaled to your size.",
       "Feed through UT-141 (RG-402) semi-rigid coax: solder the jacket into the ground cone apex and the centre pin into the washer. Keep the pin gap as listed: it sets the top of the band.",
       ...(sw ? ["The shorting wire is a DC short across the coax. That is fine for a receiver, but switch off any antenna power (bias-tee) on the receiver input, or put a DC block in the line."] : []),
@@ -598,10 +600,10 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
         ? "The small sky-tilted bicone built from wire: 16 bent frames per side with a wire hoop at every bend, plus one straight shorting wire from a hot frame down to the ground frame under it. That wire is what makes it small: at the bottom of the band it works as an inductor across the feed and lifts the low resistance of the small cage to about 50 Ω. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
         : "The compact sky-tilted bicone built from wire: 16 bent frames per side follow the solid shape, with a wire hoop soldered round them at every bend. With 16 frames it matches the solid version (fewer frames lose the top of the band). Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation).",
       mini === "b44"
-        ? "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this cage (Ø1 mm wire at 1.36 GHz), scaled to your size."
+        ? "The shape is fixed (it was optimised as a whole for Ø1 mm wire at 1.36 GHz); all dimensions scale with your lowest frequency, but the wire is the diameter you set (Ø1 mm by default). The Simulation tab shows the precomputed NEC-2 sweeps of this cage at your wire diameter, scaled to your size."
         : mini === "w40"
-        ? "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this cage (Ø1 mm wire at 1.4 GHz), scaled to your size."
-        : "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this cage (Ø1 mm wire at 960 MHz), scaled to your size.",
+        ? "The shape is fixed (it was optimised as a whole for Ø1 mm wire at 1.4 GHz); all dimensions scale with your lowest frequency, but the wire is the diameter you set (Ø1 mm by default). The Simulation tab shows the precomputed NEC-2 sweeps of this cage at your wire diameter, scaled to your size."
+        : "The shape is fixed (it was optimised as a whole for Ø1 mm wire at 960 MHz); all dimensions scale with your lowest frequency, but the wire is the diameter you set (Ø1 mm by default). The Simulation tab shows the precomputed NEC-2 sweeps of this cage at your wire diameter, scaled to your size.",
       ...(wd.wire.capped ? ["The coiled shorting wires can't be wound from wire this thick: the wire diameter is capped at what fits the coil."] : []),
       "Feed through UT-141 (RG-402) semi-rigid coax: the hot frames are soldered round a washer on the centre pin (keep the listed gap above the coax end), the ground frames round a collar on the coax jacket.",
       ...(sh ? ["The shorting wire is a DC short across the coax. That is fine for a receiver, but switch off any antenna power (bias-tee) on the receiver input, or put a DC block in the line."] : []),
@@ -630,7 +632,6 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
 
 const BANDS_P = { ...BANDS, label: "Frequency bands (all must fit in the range)" };
 const PARAMS = [BANDS_P, COAX_FERRITE];
-const WIRE_P: ParamDef = { key: "d", label: "Wire diameter", kind: "length", min: 0.2e-3, max: 5e-3 };
 const PARAMS_CAGE = [BANDS_P, WIRE_P, COAX_FERRITE];
 const PARAMS_CAGE_TUBE = [BANDS_P, WIRE_P, COAX_TUBE];
 const PARAMS_CAGE_TUBES = [BANDS_P, WIRE_P, COAX_TUBES];
@@ -680,7 +681,7 @@ export const skyconecage: AntennaDef = {
   name: "Sky-tilted capped bicone, wire cage (6.7:1)",
   category: "Broadband",
   traits: { pol: "vertical", pattern: "omni" },
-  summary: "The compact bicone bent from Ø1 mm wire instead of sheet: 16 frames per side and a few hoops, 960 MHz–6.4 GHz at Ø72 × 75 mm, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
+  summary: "The compact bicone bent from wire (designed for Ø1 mm) instead of sheet: 16 frames per side and a few hoops, 960 MHz–6.4 GHz at Ø72 × 75 mm, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
   multiband: "broadband",
   maxRatio: SKYCONE_W16.fHi / SKYCONE_W16.fLo,
   params: PARAMS_CAGE,

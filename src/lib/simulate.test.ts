@@ -147,6 +147,12 @@ describe("sky-cone wire diameter", () => {
     expect(c.notes).not.toContain(CLAMP);
     expect(c.notes.some((n) => n.includes("precomputed NEC-2 sweeps of this cage at several wire diameters"))).toBe(true);
   });
+  it("A55 at its coil cap: the nearest table and the detune note", () => {
+    const n = sim("skyconecage55", 3e-3).notes;
+    expect(n).toContain(CLAMP);
+    expect(n).toContain(DETUNE);
+    expect(sim("skyconecage55", 1e-3).notes).not.toContain(DETUNE);
+  });
   it("cage Ø outside the tables is noted", () => {
     expect(sim("skyconecage", 5e-3).notes).toContain(CLAMP);
     expect(sim("skyconecage", 0.8e-3).notes).not.toContain(CLAMP);
