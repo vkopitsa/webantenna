@@ -21,10 +21,26 @@ export const STEP_PICS: Record<string, SceneId> = {
   [STEP_TEXT.common.enclosure]: "enclosure",
   [STEP_TEXT.common.s1p]: "load-s1p",
   [STEP_TEXT.common.seal]: "seal",
+  [STEP_TEXT.pcb.make]: "make-board",
+  [STEP_TEXT.loop.etch]: "make-board",
+  [STEP_TEXT.pcb.connector]: "board-connector",
+  [STEP_TEXT.loop.connector]: "board-connector",
+  [STEP_TEXT.pcb.stack]: "stack-boards",
+  [STEP_TEXT.pcb.stitch]: "stitch-vias",
+  [STEP_TEXT.loop.caps]: "loop-caps",
+  [STEP_TEXT.loop.trimmer]: "loop-trim",
+  [STEP_TEXT.air.cut]: "cut-plates",
+  [STEP_TEXT.air.drill]: "drill-plates",
+  [STEP_TEXT.air.jack]: "fit-jack",
+  [STEP_TEXT.air.mount]: "mount-patch",
+  [STEP_TEXT.air.director]: "fit-director",
 };
 
 /** Key lists claimed complete: the tests require a picture for every key in them. */
 export const DONE_GROUPS: string[][] = [
   Object.values(STEP_TEXT.wire),
   Object.values(STEP_TEXT.common),
+  Object.values(STEP_TEXT.pcb),
+  Object.values(STEP_TEXT.loop),
+  Object.values(STEP_TEXT.air),
 ];

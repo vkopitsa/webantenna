@@ -23,7 +23,8 @@ export function Timed({ dur, children }: { dur: number; children?: ReactNode }) 
   return <DurContext.Provider value={dur}>{children}</DurContext.Provider>;
 }
 
-const FG = "var(--fg)";
+/** Outline / text colour of every part (the theme's foreground). */
+export const FG = "var(--fg)";
 
 /** Common SMIL timing attributes from the scene's dur. */
 function useAnim(times: number[]) {
@@ -275,6 +276,142 @@ export function Analyser({ x, y, w = 130, h = 140, children }: { x: number; y: n
       <rect x={x} y={y} width={w} height={h} rx={10} fill="var(--coax)" stroke={FG} strokeWidth={1.5} />
       <Screen x={x + 10} y={y + 12} w={w - 20} h={h * 0.55}>{children}</Screen>
       {[0, 1, 2].map((i) => <circle key={i} cx={x + w * (0.3 + 0.2 * i)} cy={y + h * 0.83} r={6} fill="var(--bolt)" stroke={FG} strokeWidth={1} />)}
+    </g>
+  );
+}
+
+/** A flat metal plate or sheet (side view: a thin rectangle; from above: its outline). */
+export function Plate({ x, y, w, h }: { x: number; y: number; w: number; h: number }) {
+  return <g><rect x={x} y={y} width={w} height={h} fill="var(--sheet)" stroke={FG} strokeWidth={1.2} /></g>;
+}
+
+/** A nylon standoff seen from the side, from y0 (top) to y1 (bottom), centred on x. */
+export function Standoff({ x, y0, y1, w = 12 }: { x: number; y0: number; y1: number; w?: number }) {
+  return (
+    <g>
+      <rect x={x - w / 2} y={y0} width={w} height={y1 - y0} fill="var(--panel)" stroke={FG} strokeWidth={1.2} />
+      <line x1={x - w / 2 + 3} y1={y0 + 3} x2={x - w / 2 + 3} y2={y1 - 3} stroke="var(--muted)" strokeWidth={1} />
+    </g>
+  );
+}
+
+/** A dimension line between two points, with arrowheads at both ends. */
+export function Dim({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
+  const id = useSvgId("dim");
+  return (
+    <g>
+      <defs>
+        <marker id={id} markerWidth={8} markerHeight={8} refX={8} refY={4} orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+          <path d="M0 0 L8 4 L0 8z" fill={FG} />
+        </marker>
+      </defs>
+      <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={FG} strokeWidth={1.2} markerStart={`url(#${id})`} markerEnd={`url(#${id})`} />
+    </g>
+  );
+}
+
+/** A plated via from above: tinned ring with the drilled hole. */
+export function Via({ x, y }: { x: number; y: number }) {
+  return <g><circle cx={x} cy={y} r={4.5} fill="var(--solder)" stroke={FG} strokeWidth={0.8} /><circle cx={x} cy={y} r={1.8} fill="var(--coax)" /></g>;
+}
+
+/** An SMD capacitor from above, centred at (x, y), terminals at both ends along x unless rotated. */
+export function Cap({ x, y, w = 20, h = 10, rot = 0 }: { x: number; y: number; w?: number; h?: number; rot?: number }) {
+  const e = w * 0.22;
+  return (
+    <g transform={tf(x, y, rot)}>
+      <rect x={-w / 2} y={-h / 2} width={w} height={h} rx={1.5} fill="var(--panel2)" stroke={FG} strokeWidth={1} />
+      <rect x={-w / 2} y={-h / 2} width={e} height={h} fill="var(--solder)" stroke={FG} strokeWidth={1} />
+      <rect x={w / 2 - e} y={-h / 2} width={e} height={h} fill="var(--solder)" stroke={FG} strokeWidth={1} />
+    </g>
+  );
+}
+
+/**
+ * A trimmer capacitor from above, centred at (x, y), `s` = body size: square body, round rotor with a screwdriver slot;
+ * `turn` = [degrees, loop fractions] turns the slot (see Rot).
+ */
+export function Trimmer({ x, y, s = 24, turn }: { x: number; y: number; s?: number; turn?: [number[], number[]] }) {
+  const r = s * 0.32;
+  const slot = <line x1={x - r * 0.8} y1={y} x2={x + r * 0.8} y2={y} stroke={FG} strokeWidth={Math.max(1.5, s * 0.06)} strokeLinecap="round" />;
+  return (
+    <g>
+      <rect x={x - s / 2} y={y - s / 2} width={s} height={s} rx={2} fill="var(--panel)" stroke={FG} strokeWidth={1.2} />
+      <rect x={x - s / 2 - 2} y={y - s / 2 + s * 0.3} width={4} height={s * 0.4} fill="var(--solder)" stroke={FG} strokeWidth={0.8} />
+      <rect x={x + s / 2 - 2} y={y - s / 2 + s * 0.3} width={4} height={s * 0.4} fill="var(--solder)" stroke={FG} strokeWidth={0.8} />
+      <circle cx={x} cy={y} r={r} fill="var(--bolt)" stroke={FG} strokeWidth={1.2} />
+      {turn ? <Rot about={[x, y]} values={turn[0]} times={turn[1]}>{slot}</Rot> : slot}
+    </g>
+  );
+}
+
+/** A flat-blade screwdriver, tip at (x, y), handle along −x. */
+export function Screwdriver({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
+  return (
+    <g transform={tf(x, y, rot)}>
+      <rect x={-118} y={-9} width={62} height={18} rx={8} fill="var(--coax)" stroke={FG} strokeWidth={1.2} />
+      <rect x={-56} y={-2.5} width={52} height={5} fill="var(--bolt)" stroke={FG} strokeWidth={1} />
+      <path d="M-4 -3.5 L0 -3.5 L0 3.5 L-4 3.5 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
+    </g>
+  );
+}
+
+/** Tin snips seen from above, long straight blades along +x from (x, y). */
+export function Snips({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
+  return (
+    <g transform={tf(x, y, rot)}>
+      <path d="M-100 -18 Q-55 -14 -14 -5" fill="none" stroke={FG} strokeWidth={11} strokeLinecap="round" />
+      <path d="M-100 -18 Q-55 -14 -14 -5" fill="none" stroke="var(--coax)" strokeWidth={9} strokeLinecap="round" />
+      <path d="M-100 18 Q-55 14 -14 5" fill="none" stroke={FG} strokeWidth={11} strokeLinecap="round" />
+      <path d="M-100 18 Q-55 14 -14 5" fill="none" stroke="var(--coax)" strokeWidth={9} strokeLinecap="round" />
+      <path d="M-12 -9 L36 -3 Q42 -1 42 0 L-12 0 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
+      <path d="M-12 9 L36 3 Q42 1 42 0 L-12 0 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
+      <circle cx={-8} cy={0} r={5} fill="var(--bolt)" stroke={FG} strokeWidth={1.2} />
+    </g>
+  );
+}
+
+/** A flat hand file, tip at (x, y), toothed blade `len` long along −x, then the handle. */
+export function FlatFile({ x, y, rot = 0, len = 80 }: { x: number; y: number; rot?: number; len?: number }) {
+  const teeth = [];
+  for (let i = 6; i < len - 4; i += 6) teeth.push(<line key={i} x1={-i} y1={-5} x2={-i - 4} y2={5} stroke={FG} strokeWidth={0.7} />);
+  return (
+    <g transform={tf(x, y, rot)}>
+      <rect x={-len - 40} y={-7} width={40} height={14} rx={6} fill="var(--coax)" stroke={FG} strokeWidth={1.2} />
+      <rect x={-len} y={-6} width={len} height={12} rx={1.5} fill="var(--bolt)" stroke={FG} strokeWidth={1} />
+      {teeth}
+    </g>
+  );
+}
+
+/** An SMA edge connector from above: flange on the board edge at (x, y), barrel along +x, centre pin and ground legs along −x. */
+export function SmaEdge({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
+  const gold = { fill: "var(--solder)", stroke: FG, strokeWidth: 1 };
+  return (
+    <g transform={tf(x, y, rot)}>
+      <rect x={-22} y={-24} width={22} height={8} {...gold} />
+      <rect x={-22} y={16} width={22} height={8} {...gold} />
+      <rect x={-20} y={-1.8} width={20} height={3.6} {...gold} />
+      <rect x={0} y={-25} width={12} height={50} rx={1} {...gold} />
+      <rect x={12} y={-10} width={34} height={20} {...gold} />
+      {[18, 24, 30, 36, 42].map((i) => <line key={i} x1={i} y1={-10} x2={i - 3} y2={10} stroke={FG} strokeWidth={0.7} />)}
+    </g>
+  );
+}
+
+/**
+ * An SMA panel jack seen from the side: the flange's top face centred at (x, y) (the underside of the panel), threaded body below,
+ * the insulator and a centre pin `pin` long standing up from it.
+ */
+export function SmaJack({ x, y, pin = 60 }: { x: number; y: number; pin?: number }) {
+  const gold = { fill: "var(--solder)", stroke: FG, strokeWidth: 1 };
+  return (
+    <g>
+      <rect x={x - 1.6} y={y - 8 - pin} width={3.2} height={pin} {...gold} />
+      <rect x={x - 4} y={y - 8} width={8} height={8} fill="var(--panel)" stroke={FG} strokeWidth={1} />
+      <rect x={x - 22} y={y} width={44} height={6} {...gold} />
+      <rect x={x - 10} y={y + 6} width={20} height={40} {...gold} />
+      {[12, 18, 24, 30, 36, 42].map((i) => <line key={i} x1={x - 10} y1={y + i} x2={x + 10} y2={y + i - 3} stroke={FG} strokeWidth={0.7} />)}
     </g>
   );
 }

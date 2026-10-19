@@ -1,10 +1,8 @@
 // Wire-antenna build steps and the common measure / trim / seal steps (STEP_TEXT.wire, STEP_TEXT.common).
 import {
   Analyser, Appear as In, Arrow, Check, Coax, Cutters, Draw, Drill, Fade, Hand, Iron, Label, Mark, Move, Pliers,
-  Plastic, Rot, Ruler, FeedBlock, Terminals, Joint as Blob, Screen, SwrCurve, Wire, type Scene,
+  Plastic, Rot, Ruler, FeedBlock, Terminals, Joint as Blob, Screen, SwrCurve, Wire, FG, type Scene,
 } from "../kit";
-
-const FG = "var(--fg)";
 
 // ------------------------------------------------------------------ cut
 
