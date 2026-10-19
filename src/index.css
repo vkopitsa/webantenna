@@ -105,17 +105,17 @@ label { color: var(--muted); font-size: 12px; }
 /* build-step pictures: materials */
 :root {
   --copper: #b5651d; --mark: #d40000; --bolt: #9aa5b1; --stop: #e9b949; --plastic: #dfe5ec; --plastic-edge: #556070;
-  --sheet: #c9ced6; --fr4: #2f7d4a; --solder: #c0c4c8; --coax: #2b2f36;
+  --sheet: #c9ced6; --fr4: #2f7d4a; --solder: #c0c4c8; --coax: #2b2f36; --etch: #6fb3ad;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --copper: #d9894a; --mark: #ff6b6b; --bolt: #8a96a3; --stop: #e9b949; --plastic: #3a4452; --plastic-edge: #9aa6b5;
-    --sheet: #6b7480; --fr4: #3f9c5f; --solder: #d5d9dd; --coax: #11141a;
+    --sheet: #6b7480; --fr4: #3f9c5f; --solder: #d5d9dd; --coax: #11141a; --etch: #2f7f7a;
   }
 }
 :root[data-theme="dark"] {
   --copper: #d9894a; --mark: #ff6b6b; --bolt: #8a96a3; --stop: #e9b949; --plastic: #3a4452; --plastic-edge: #9aa6b5;
-  --sheet: #6b7480; --fr4: #3f9c5f; --solder: #d5d9dd; --coax: #11141a;
+  --sheet: #6b7480; --fr4: #3f9c5f; --solder: #d5d9dd; --coax: #11141a; --etch: #2f7f7a;
 }
 
 .app { display: grid; grid-template-rows: auto 1fr; height: 100%; }

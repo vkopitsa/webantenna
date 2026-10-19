@@ -20,11 +20,10 @@ const makeBoard: Scene = {
   dur: 5,
   still: 4.3,
   draw: (t) => <>
-    {/* the etch tray */}
-    <rect x={116} y={112} width={100} height={78} rx={8} fill="var(--panel2)" stroke={FG} strokeWidth={1.5} />
-    <rect x={122} y={118} width={88} height={66} rx={5} fill="var(--muted)" opacity={0.25} />
+    {/* the etch tray from the front, a little from above: liquid surface behind, tapered translucent tub in front */}
+    <path d="M120 104 L216 104 L224 120 L112 120 Z" fill="var(--etch)" stroke={FG} strokeWidth={1.2} strokeLinejoin="round" />
     {/* the board: copper over FR-4, toner after the transfer, copper traces after the etch */}
-    <Move values={[[0, 0], [0, 0], [98, 28], [98, 28], [202, 54], [202, 54]]} times={[0, 0.3, 0.4, 0.58, 0.7, 1]}>
+    <Move values={[[0, 0], [0, 0], [98, 22], [98, 22], [202, 54], [202, 54]]} times={[0, 0.3, 0.4, 0.58, 0.7, 1]}>
       <rect x={28} y={96} width={80} height={55} rx={2} fill="var(--fr4)" stroke={FG} strokeWidth={1} />
       {pattern(28, 96, "var(--copper)")}
       <Fade values={[1, 1, 0, 0]} times={[0, 0.44, 0.54, 1]}>
@@ -33,7 +32,10 @@ const makeBoard: Scene = {
       <Fade values={[0, 0, 1, 1, 0, 0]} times={[0, 0.2, 0.24, 0.6, 0.66, 1]}>{pattern(28, 96, "var(--coax)")}</Fade>
       <Fade values={[1, 1, 0, 0, 1, 1]} times={[0, 0.28, 0.3, 0.68, 0.72, 1]}><Label x={68} y={170} text={t("copper")} anchor="middle" to={[82, 128]} /></Fade>
     </Move>
-    <rect x={122} y={118} width={88} height={66} rx={5} fill="var(--muted)" opacity={0.2} />
+    <path d="M112 120 L224 120 L212 198 L124 198 Z" fill="var(--etch)" opacity={0.6} />
+    <path d="M112 120 L224 120 L212 198 L124 198 Z" fill="none" stroke={FG} strokeWidth={1.5} strokeLinejoin="round" />
+    <path d="M108 120 L228 120" stroke={FG} strokeWidth={3} strokeLinecap="round" />
+    <path d="M124 112 q5 -3 10 0 t10 0 M192 112 q5 -3 10 0 t10 0" fill="none" stroke="var(--panel)" strokeWidth={1.5} strokeLinecap="round" />
     {/* the paper template, printed mirrored, laid face down on the copper and lifted off */}
     <Move values={[[0, 0], [0, 0], [0, 82], [0, 82], [0, 0], [0, 0]]} times={[0, 0.05, 0.14, 0.2, 0.28, 1]}>
       <rect x={28} y={14} width={80} height={55} fill="var(--panel)" stroke={FG} strokeWidth={1.2} />
@@ -55,9 +57,9 @@ const makeBoard: Scene = {
       {[244, 262, 280].map((x) => <rect key={x} x={x} y={48} width={8} height={8} fill="var(--panel)" stroke={FG} strokeWidth={1} />)}
     </g>
     {/* the etch and out */}
-    <Appear a={0.3}><Arrow d="M86 178 Q96 206 124 196" /></Appear>
-    <Appear a={0.58}><Arrow d="M214 110 Q246 104 260 140" /></Appear>
-    <Label x={166} y={208} text={t("etch")} anchor="middle" />
+    <Appear a={0.3}><Arrow d="M84 178 Q92 204 116 194" /></Appear>
+    <Appear a={0.58}><Arrow d="M226 102 Q252 102 262 140" /></Appear>
+    <Label x={166} y={214} text={t("etch")} anchor="middle" />
   </>,
 };
 
@@ -177,8 +179,8 @@ const loopCaps: Scene = {
       <path d="M150 50 L150 36 M170 50 L170 36" fill="none" stroke="var(--copper)" strokeWidth={4} />
       <Trimmer x={160} y={30} s={22} />
     </Appear>
-    <Appear a={0.24}><Label x={196} y={74} text={t("Cs")} to={[172, 60]} /></Appear>
-    <Appear a={0.5}><Label x={196} y={192} text={t("Cp")} to={[173, 200]} /></Appear>
+    <Appear a={0.24}><Label x={232} y={52} text={t("Cs")} to={[173, 52]} /></Appear>
+    <Appear a={0.5}><Label x={232} y={214} text={t("Cp")} to={[173, 204]} /></Appear>
     <Appear a={0.6}><Label x={196} y={26} text={t("trimmer")} to={[173, 30]} /></Appear>
   </>,
 };
@@ -230,7 +232,7 @@ const cutPlates: Scene = {
     <Move values={[[0, 0], [0, 0], [0, 110], [0, 110]]} times={[0, 0.08, 0.4, 1]}>
       <Snips x={150} y={62} rot={90} />
     </Move>
-    <Appear a={0.08}><Arrow d="M300 30 L300 120" /></Appear>
+    <Appear a={0.08}><Arrow d="M184 70 L184 130" /></Appear>
     <Appear a={0.44}><Arrow d="M96 228 L50 228" /></Appear>
     <Fade values={[0, 0, 1, 1]} times={[0, 0.54, 0.58, 1]}>
       <Move values={[[0, 0], [0, 0], [0, 24], [0, 0], [0, 24], [0, 0], [0, 24], [0, 24]]} times={[0, 0.58, 0.64, 0.7, 0.76, 0.82, 0.88, 1]}>
@@ -239,7 +241,7 @@ const cutPlates: Scene = {
       <Arrow d="M98 120 L98 190" />
     </Fade>
     <Label x={250} y={190} text={t("sheet")} anchor="middle" />
-    <Label x={240} y={60} text={t("snips")} anchor="middle" to={[166, 110]} />
+    <Label x={210} y={40} text={t("snips")} to={[166, 80]} />
     <Fade values={[0, 0, 1, 1]} times={[0, 0.54, 0.58, 1]}><Label x={40} y={70} text={t("file")} to={[110, 112]} /></Fade>
   </>,
 };
