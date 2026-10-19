@@ -41,6 +41,17 @@ export const STEP_PICS: Record<string, SceneId> = {
   [CUTBEND_HOWTO.board[3]]: "bend-order",
   [CUTBEND_HOWTO.lever[7]]: "bend-order",
   [CUTBEND_HOWTO.plate[5]]: "bend-order",
+  [CUTBEND_HOWTO.lever[0]]: "bender-choice",
+  [CUTBEND_HOWTO.plate[0]]: "bender-choice",
+  [CUTBEND_HOWTO.lever[1]]: "lever-print",
+  [CUTBEND_HOWTO.lever[2]]: "lever-assemble",
+  [CUTBEND_HOWTO.lever[3]]: "lever-roller",
+  [CUTBEND_HOWTO.lever[4]]: "lever-vise",
+  [CUTBEND_HOWTO.lever[5]]: "lever-stop",
+  [CUTBEND_HOWTO.lever[6]]: "lever-load",
+  [CUTBEND_HOWTO.lever[8]]: "bend-rl",
+  [CUTBEND_HOWTO.plate[6]]: "bend-rl",
+  [CUTBEND_HOWTO.lever[9]]: "lever-swing",
 };
 
 /** Key lists claimed complete: the tests require a picture for every key in them. */
@@ -51,4 +62,5 @@ export const DONE_GROUPS: string[][] = [
   Object.values(STEP_TEXT.loop),
   Object.values(STEP_TEXT.air),
   CUTBEND_HOWTO.board,
+  CUTBEND_HOWTO.lever,
 ];
