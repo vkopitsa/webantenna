@@ -1557,4 +1557,11 @@ export const UK: Record<string, string> = {
   "turn over": "переверніть",
   "springback": "пружинення",
   "drawing": "креслення",
+  "plate": "пластина",
+  "lines up": "лініями догори",
+  "trap pin": "притискний штифт",
+  "stop": "упор",
+  "countersunk head": "потайна головка",
+  "stop holes": "отвори для упору",
+  "hand": "рука",
 };
