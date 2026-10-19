@@ -27,3 +27,4 @@ dist-ssr
 .claude/worktrees/
 test-results
 playwright-report
+.superpowers/
