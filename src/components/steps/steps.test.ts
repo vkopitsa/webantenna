@@ -17,7 +17,7 @@ function fakeSvg() {
 }
 
 const demo: Scene = {
-  dur: 4,
+  dur: 3.5,
   still: 3,
   draw: (t) => [
     createElement(Rot, { key: "r", about: [160, 120], values: [0, 90, 90], times: [0, 0.6, 1] },
@@ -53,7 +53,7 @@ describe("SceneSvg", () => {
     expect(html).toContain('aria-label="x"');
   });
   it("Rot uses the scene's dur", () => {
-    expect(html).toContain('dur="4s"');
+    expect(html).toContain('dur="3.5s"');
     expect(html).toContain('repeatCount="indefinite"');
   });
 });
