@@ -3,6 +3,7 @@ import type { Design, Vec3, Wire } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { CLEAR, INSULATE, WALL, mm } from "../rules";
 import { add, bar, box, channel, rod, scale, sub, unit, zipSlot, type V3 } from "../shapes";
+import { around, merge, type Ext } from "./extent";
 
 /** Dipole / inverted V: centre insulator and end insulators. */
 export const CENTRE_STRINGS = [
@@ -168,4 +169,20 @@ export function fanParts(d: Design): PartSpec[] {
       return [part];
     },
   }))];
+}
+
+/** Everything the dipole (or fan dipole) hardware occupies, in mm: the centre block with its arm lugs and, for the fan,
+ *  the spreader plates on both legs. */
+export function dipoleHardwareBox(d: Design, fan: boolean): Ext {
+  const { wireD, gap, arms } = dipoleArms(d, fan ? ["driven", "parasitic"] : ["driven"]);
+  const hb = centreHubBox(gap, wireD);
+  const parts: Ext[] = [{ lo: hb.lo, hi: hb.hi }, ...arms.map((a) => around([a.start, add(a.start, scale(a.dir, LUG))], hb.w / 2))];
+  if (fan) {
+    const r = (wireD + CLEAR) / 2, m0 = r + WALL + 2;
+    for (const s of fanSpreaders(d)) {
+      const zs = s.holes.map((h) => h.p[2]), ext = Math.max(...s.holes.map((h) => (r + 2 * Math.abs(h.u[2])) / h.u[1])), m = Math.max(m0, ext + WALL);
+      for (const sg of [1, -1]) parts.push({ lo: [-m0, sg * s.Y - 2, Math.min(...zs) - m], hi: [m0, sg * s.Y + 2, Math.max(...zs) + m] });
+    }
+  }
+  return merge(...parts);
 }

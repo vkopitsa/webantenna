@@ -340,6 +340,7 @@ tr.pinned td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .dimline.all:not(.hot) .dim-text { font-weight: 500; }
 .ghost { stroke: var(--series-2); stroke-dasharray: 6 4; opacity: 0.9; fill: none; }
 .ghost-plate { stroke-width: 1.2; }
+.case-outline { stroke: var(--grid-strong); stroke-width: 1.3; stroke-dasharray: 5 4; fill: none; stroke-linejoin: round; }
 .legend-text { fill: var(--chart-fg); font-size: 12px; font-family: system-ui, sans-serif; }
 .preview-tip { position: absolute; z-index: 3; pointer-events: none; max-width: 240px; padding: 5px 8px; font-size: 12px; line-height: 1.4; color: var(--fg); background: var(--chart-bg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); white-space: nowrap; }
 .preview-tip .tip-head { font-weight: 600; }

@@ -3,6 +3,7 @@ import type { Design, Params } from "../../types";
 import { num } from "../../types";
 import { FAIL, msg, PartError, type PartSpec } from "../parts";
 import { CLEAR, WALL, mm } from "../rules";
+import { around, type Ext } from "./extent";
 
 /** J-pole stub spacers and feed-tap gauge; collinear radome spacers. */
 export const SPACER_STRINGS = [
@@ -83,4 +84,20 @@ export function collinearParts(p: Params, d: Design): PartSpec[] {
       return [CS.circle(ro, 96).subtract(cuts).extrude(6)];
     },
   }];
+}
+
+/** The stub spacers (mm, world frame): two tube sockets side by side, the radiator's and the stub's, spread along the stub. */
+export function jpoleHardwareBox(d: Design): Ext {
+  const live = d.wires.filter((w) => !w.drawOnly && !w.necOnly);
+  const rad = live.find((w) => w.group === "driven")!, stub = live.find((w) => w.tag === "B")!, g = jpoleGeometry(d);
+  const R = (g.tubeD + CLEAR) / 2 + WALL, z = [stub.a[2], stub.b[2]].map((v) => mm(v));
+  const e = around([[mm(rad.a[0]), mm(rad.a[1]), 0], [mm(stub.a[0]), mm(stub.a[1]), 0]], R);
+  return { lo: [e.lo[0], e.lo[1], Math.min(...z)], hi: [e.hi[0], e.hi[1], Math.max(...z)] };
+}
+
+/** The collinear's radome spacers (mm): a disc of the radome's bore round the cable, along the antenna. */
+export function collinearHardwareBox(p: Params, d: Design): Ext {
+  const rid = mm(num(p, "rid", 20e-3)), ro = (rid - CLEAR) / 2, w = d.wires.filter((x) => !x.drawOnly && !x.necOnly)[0];
+  const z = d.wires.filter((x) => !x.drawOnly && !x.necOnly).flatMap((x) => [mm(x.a[2]), mm(x.b[2])]);
+  return { lo: [mm(w.a[0]) - ro, mm(w.a[1]) - ro, Math.min(...z)], hi: [mm(w.a[0]) + ro, mm(w.a[1]) + ro, Math.max(...z)] };
 }

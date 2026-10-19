@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AntennaDef, Design, Params } from "../lib/types";
 import { partsFor, partsReadme, USE_LABELS, type BuiltPart } from "../lib/print";
+import { MAX_SIZE } from "../lib/print/rules";
+import { shellOutline } from "../lib/print/shells";
 import { zip } from "../lib/zip";
 import { usePrintParts } from "../usePrintParts";
 import { useStore } from "../store";
@@ -15,6 +17,8 @@ export function PrintPanel({ def, params, design, base }: { def: AntennaDef; par
   const t = useT();
   const unit = useStore((s) => s.unit);
   const specs = useMemo(() => partsFor(def.id, params, design), [def.id, params, design]);
+  // the case is known from the design alone, before the worker has built anything
+  const outline = useMemo(() => shellOutline(def.id, params, design), [def.id, params, design]);
   const st = usePrintParts(def.id, params, design, specs.length > 0);
   const [sel0, setSel] = useState(0);
   const sel = Math.max(0, Math.min(sel0, specs.length - 1));   // the list can shrink when a parameter changes
@@ -35,6 +39,15 @@ export function PrintPanel({ def, params, design, base }: { def: AntennaDef; par
             {st.status === "running" && <span className="hint">{t("Building parts…")}</span>}
             {st.status === "error" && <span className="hint err-text">{t("Could not load the 3D geometry engine: {0}", st.error)}</span>}
           </div>
+          {outline && (
+            <p className="hint case-info">
+              {"none" in outline ? t("No case: larger than {0}", fmtLen(MAX_SIZE / 1000, unit))
+                : (() => {
+                  const dims = [0, 1, 2].map((i) => fmtLen((outline.hi[i] - outline.lo[i]) / 1000, unit)).join(" × ");
+                  return outline.kind === "dome" ? t("Case: radome, {0} outside", dims) : t("Case: box, {0} outside", dims);
+                })()}
+            </p>
+          )}
           <div className="scroll-x">
             <table className="data print-parts">
               <thead><tr><th>{t("Part")}</th><th>{t("Use")}</th><th className="num">{t("Quantity")}</th><th>{t("Size")}</th><th>{t("What it does")}</th><th /></tr></thead>

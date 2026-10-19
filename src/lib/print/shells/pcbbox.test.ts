@@ -102,7 +102,7 @@ describe("PCB enclosures", () => {
     // over the ground pour, (gap + cable radius) inside its edge
     const ifa = pcbEntry(setup("ifa").d);
     expect(ifa.dir).toEqual([-1, 0, 0]);
-    expect(ifa.at[1]).toBeCloseTo(-(1.5 + 1.75), 6);
+    expect(ifa.at[1]).toBeCloseTo(-(STYLE[styleOf(setup("ifa").d)].gap + 1.75), 6);
     // a synthetic port next to the y1 edge (no ground there): that edge, at the port's x
     const { d } = setup("printeddipole"), b = d.pcb!.board;
     const port = { ...d.pcb!.port, start: [-0.5e-3, b.y1 - 2e-3, d.pcb!.h] as Design["wires"][0]["a"], stop: [0.5e-3, b.y1 - 1e-3, d.pcb!.h] as Design["wires"][0]["a"] };
@@ -133,8 +133,8 @@ describe("PCB enclosures", () => {
         for (const [a, b] of [[path[0], path[1]], [path[1], path[2]]]) if (Math.hypot(b[0] - a[0], b[1] - a[1]) > 1e-6)
           expect(shell.intersect(rod(M, [a[0], a[1], h + 1.75], [b[0], b[1], h + 1.75], 3.5)).volume(), `${name(id, extra)} cable`).toBeLessThan(1e-2);
       } else expect(pcbEntry(d).probe, id).toBe(true);
-      // the outer bottom face of the bottom half and the outer top face of the top half: a 0.5 mm slab, ears left out
-      const { wall } = STYLE[styleOf(d)], o = pcbCavity(d), lo = [o.lo[0] - wall, o.lo[1] - wall], hi = [o.hi[0] + wall, o.hi[1] + wall], E = 6;
+      // the outer bottom face of the bottom half and the outer top face of the top half: a 0.5 mm slab, 
+      const { wall } = STYLE[styleOf(d)], o = pcbCavity(d), lo = [o.lo[0] - wall, o.lo[1] - wall], hi = [o.hi[0] + wall, o.hi[1] + wall], Ex = Math.min(6, (hi[0] - lo[0]) / 4), Ey = Math.min(6, (hi[1] - lo[1]) / 4);
       const faces: [number, number, number][] = [[0, o.lo[2] - wall, o.lo[2] - wall + 0.5], [1, o.hi[2] + wall - 0.5, o.hi[2] + wall]];
       for (const [k, z0, z1] of faces) {
         const half = halves[k], bb = half.boundingBox();
@@ -144,7 +144,7 @@ describe("PCB enclosures", () => {
           ...(e.probe ? [rod(M, [e.at[0], e.at[1], z0 - 1], [e.at[0], e.at[1], z1 + 1], 6.6)] : []),
           ...(styleOf(d) === "outdoor" ? [rod(M, [dx, dy, z0 - 1], [dx, dy, z1 + 1], 3.1)] : []),
         ];
-        for (const probe of [box(M, [lo[0] + E, lo[1], z0], [hi[0] - E, hi[1], z1]), box(M, [lo[0], lo[1] + E, z0], [hi[0], hi[1] - E, z1])].map((b) => holes.reduce((q, x) => q.subtract(x), b)))
+        for (const probe of [box(M, [lo[0] + Ex, lo[1], z0], [hi[0] - Ex, hi[1], z1]), box(M, [lo[0], lo[1] + Ey, z0], [hi[0], hi[1] - Ey, z1])].map((b) => holes.reduce((q, x) => q.subtract(x), b)))
           expect(half.intersect(probe).volume() / probe.volume(), `${name(id, extra)} half ${k} flat face`).toBeGreaterThan(0.99);
         expect(half.decompose().length, `${name(id, extra)} half ${k}`).toBe(1);
       }

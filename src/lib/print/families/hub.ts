@@ -2,6 +2,7 @@ import { num, type Design, type Params, type Vec3 } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { CLEAR, FLANGE_PITCH, M3_HOLE, M3_NUT, WALL, mm } from "../rules";
 import { add, bar, box, channel, flangeCut, rod, scale, sub, unit, zipSlot, type V3 } from "../shapes";
+import { around, merge, type Ext } from "./extent";
 
 /** Ground plane: radial hub that takes the panel jack and sets the radial droop. */
 export const HUB_STRINGS = [
@@ -159,4 +160,21 @@ export function disconeParts(p: Params, d: Design): PartSpec[] {
     },
   };
   return [hub];
+}
+
+/** The ground-plane hub in the world frame (mm): plate, radial sockets with their webs, and the mast block under it. */
+export function gpHardwareBox(d: Design): Ext {
+  const g = hubGeometry(d), { w, rLug, paths } = g, R = rLug + 2, az = mastAz(paths);
+  const mast = ([[12, -6], [12, 6], [28, -6], [28, 6]] as const).map(([x, y]): V3 => [x * Math.cos(az) - y * Math.sin(az), x * Math.sin(az) + y * Math.cos(az), 0]);
+  const lugs = paths.flatMap((r) => { const a = add(r.start, scale(r.dir, r.lugFrom)); return [around([a, add(a, scale(r.dir, LUG)), [rLug * r.h[0], rLug * r.h[1], -PLATE / 2]], w / 2)]; });
+  return merge({ lo: [-R, -R, -35], hi: [R, R, 0] }, { lo: [Math.min(...mast.map((q) => q[0])), Math.min(...mast.map((q) => q[1])), -35], hi: [Math.max(...mast.map((q) => q[0])), Math.max(...mast.map((q) => q[1])), -PLATE] }, ...lugs);
+}
+
+/** The discone hub (mm): the top disc support, the cone-rod sockets and the mast cup below. */
+export function disconeHardwareBox(p: Params, d: Design): Ext {
+  const g = disconeGeometry(d), mast = num(p, "mast", 25e-3) * 1000, rCup = (mast + CLEAR) / 2 + WALL + 1;
+  const zBot = Math.min(g.grooveZ - g.grooveH / 2, -(g.sN + D_LUG) * Math.cos(g.half)) - 10, t = Math.max(0, rCup - g.neck), zc0 = zBot - t - CUP;
+  const R = Math.max(D_IN + D_LUG, rCup, ...g.coneDirs.map((u) => Math.hypot(u[0], u[1]) * (g.sN + D_LUG) + g.w / 2));
+  const zs = [zc0, g.top, ...g.coneDirs.map((u) => u[2] * (g.sN + D_LUG) - g.w / 2)];
+  return { lo: [-R, -R, Math.min(...zs)], hi: [R, R, g.top] };
 }

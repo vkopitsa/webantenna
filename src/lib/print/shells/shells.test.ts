@@ -1,265 +1,201 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import { ANTENNAS } from "../../antennas";
-import type { Design, Params } from "../../types";
+import type { Params } from "../../types";
 import { loadManifold } from "../manifold";
 import { buildPart, partsFor } from "..";
 import { FAIL } from "../parts";
-import { add, bar, box, rod, scale, type V3 } from "../shapes";
-import { gpMastAxis } from "../families/hub";
-import { centreHubBox, dipoleArms } from "../families/centre";
-import { exits, feedPoint, STYLE, styleOf, type Box3, type Exit } from "./geometry";
-import { GP_MAST_TOP, hubHood, JACK_HOLE, SHELL_HOWTO, shellPlan, type ShellPlan } from "./index";
+import { CLEAR, MAX_SIZE } from "../rules";
+import { box, rod, type V3 } from "../shapes";
+import { feedPoint, envelope, STYLE, styleOf } from "./geometry";
+import { SHELL_HOWTO, shellOutline, shellPlan } from "./index";
+import { hardwareBox } from "./hardware";
 import { quadGeometry } from "../families/spreader";
-import { hood, roundHole } from "./hood";
 import { setup } from "../families/testkit";
 
 let M: ManifoldToplevel;
 beforeAll(async () => { M = await loadManifold(); });
 const wireIds = ANTENNAS.filter((a) => a.category !== "Printed").map((a) => a.id);
-const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
-/** The hood actually built: next to a spreader hub its cube shrinks (null: no room). */
-const built = (plan: Extract<ShellPlan, { kind: "feed" }>, id: string, p: Params, d: Design) => (plan.hub ? hubHood(M, id, p, d) : plan);
-/** A roof L-slot's path: along the roof to past the nearest side wall, then straight down past the open bottom. */
-function lPath(M: ManifoldToplevel, x: Exit, inner: Box3, wall: number): Manifold[] {
-  const walls = [0, 1].flatMap((i) => [{ i, s: -1, dist: x.at[i] - inner.lo[i] }, { i, s: 1, dist: inner.hi[i] - x.at[i] }]);
-  const w = walls.reduce((m, q) => (q.dist < m.dist ? q : m));
-  const out: V3 = [...x.at];
-  out[w.i] += w.s * (w.dist + wall + x.d / 2 + 1);
-  const probe = (a: V3, b: V3) => (x.w ? bar(M, a, b, x.w) : rod(M, a, b, x.d));
-  return [probe(x.at, out), probe(out, [out[0], out[1], inner.lo[2] - 5])];
-}
+const shellOf = (id: string, extra: Params = {}) => { const { p, d } = setup(id, extra); return partsFor(id, p, d).find((s) => s.id === "shell"); };
+const sizeOf = (ms: Manifold[]): V3 => {
+  const bb = M.Manifold.union(ms).boundingBox();
+  return [bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2]];
+};
 
 describe("shells for wire antennas", () => {
-  it("every wire antenna has exactly one shell, and it builds at defaults", () => {
+  it("every wire antenna has at most one shell; it exists exactly when the case fits (sky-cones bring their own), and builds at defaults", () => {
     for (const id of wireIds) {
       const { p, d } = setup(id);
-      const sh = partsFor(id, p, d).filter((s) => s.id === "shell");
-      expect(sh.length, id).toBe(1);
-      expect(buildPart(M, sh[0], id).ok, id).toBe(true);
+      const sh = partsFor(id, p, d).filter((s) => s.id === "shell"), out = shellOutline(id, p, d);
+      expect(sh.length, id).toBeLessThanOrEqual(1);
+      if (out && "none" in out) expect(sh.length, id).toBe(0);
+      else if (out) expect(sh.length, id).toBe(1);
+      for (const s of sh) expect(buildPart(M, s, id).ok, id).toBe(true);
     }
   }, 120_000);
-  it("kind by size: a 2.4 GHz J-pole is fully enclosed, a 7 MHz dipole gets a feed box; GPS helix gets a dome, a 2 m helix a jack cover", () => {
+  it("kind by size: a 2.4 GHz J-pole is boxed, GPS helix gets a dome; a 7 MHz dipole, a 2 m helix and a Yagi get no case", () => {
     const plan = (id: string, extra = {}) => { const { p, d } = setup(id, extra); return shellPlan(id, p, d).kind; };
     expect(plan("jpole", { bands: "2400e6-2483e6" })).toBe("box");
-    expect(plan("dipole", { bands: "7e6-7.2e6" })).toBe("feed");
     expect(plan("helix")).toBe("dome");
-    expect(plan("helix", { bands: "144e6-146e6" })).toBe("jack");
+    expect(plan("dipole", { bands: "7e6-7.2e6" })).toBe("none");
+    expect(plan("helix", { bands: "144e6-146e6" })).toBe("none");
+    expect(plan("yagi")).toBe("none");
+    expect(shellOf("yagi")).toBeUndefined();
+    expect(shellOf("dipole", { bands: "7e6-7.2e6" })).toBeUndefined();
   });
-  it("families with a world-frame feed holder (dipole, fan, GP, Yagi) or spreader hub (Moxon, quad) always get the hood, however small", () => {
-    for (const id of ["dipole", "fandipole", "groundplane", "yagi", "moxon", "quad"]) for (const f of [1.2e9, 2.4e9, 5.8e9]) {
-      const { p, d } = setup(id, { bands: `${f * 0.99}-${f * 1.01}` }), plan = shellPlan(id, p, d);
-      expect(plan.kind, `${id} ${f}`).toBe("feed");
-      expect(plan.kind === "feed" && !!plan.hub, `${id} ${f}`).toBe(["moxon", "quad"].includes(id));
+  it("a dome that is too large falls back to the box, else nothing", () => {
+    // a cloverleaf at 2.4 GHz is a dome; at 1.2 GHz its radome is wider than the bed
+    const { p, d } = setup("cloverleaf", { bands: "432e6-438e6" });
+    expect(shellPlan("cloverleaf", p, d).kind).toBe("none");
+    const c = setup("cloverleaf", { bands: "5725e6-5875e6" });
+    expect(shellPlan("cloverleaf", c.p, c.d).kind).toBe("dome");
+  });
+  const union = (id: string, p: Params, d: ReturnType<typeof setup>["d"]) => {
+    const e = envelope(d), h = hardwareBox(id, p, d);
+    return h ? { lo: e.lo.map((v, i) => Math.min(v, h.lo[i])), hi: e.hi.map((v, i) => Math.max(v, h.hi[i])) } : e;
+  };
+  const SMALL: [string, Params][] = [
+    ["jpole", { bands: "2400e6-2483e6" }], ["biquad", {}], ["dipole", { bands: "2400e6-2483e6" }], ["dipole", { bands: "5725e6-5875e6" }],
+    ["groundplane", { bands: "2400e6-2483e6" }], ["groundplane", { bands: "5725e6-5875e6" }], ["fandipole", { bands: "2400e6-2483e6;5725e6-5875e6" }],
+    ["moxon", { bands: "2400e6-2483e6" }], ["quad", { bands: "2400e6-2483e6" }],
+    ["collinear", { bands: "5742e6-5858e6" }], ["discone", { bands: "2000e6-6000e6" }],
+  ];
+  it("small antennas get a box: outer size = (wires ∪ printed hardware) + 2·(gap + wall) in every axis", () => {
+    for (const [id, extra] of SMALL) {
+      const { p, d } = setup(id, extra), plan = shellPlan(id, p, d), tag = `${id} ${JSON.stringify(extra)}`;
+      const u = union(id, p, d), { gap, wall } = STYLE[styleOf(d)];
+      if (plan.kind === "dome") continue;                                   // a dome encloses the hub itself
+      expect(plan.kind, tag).toBe("box");
+      const spec = partsFor(id, p, d).find((q) => q.id === "shell")!, s = sizeOf(spec.build(M));
+      for (let i = 0; i < 3; i++) expect(Math.abs(s[i] - (u.hi[i] - u.lo[i] + 2 * (gap + wall))), `${tag} axis ${i}`).toBeLessThan(0.5);
+      const out = shellOutline(id, p, d)!;
+      if ("none" in out) throw new Error(tag);
+      for (let i = 0; i < 3; i++) expect(Math.abs(out.hi[i] - out.lo[i] - s[i]), `${tag} outline ${i}`).toBeLessThan(0.5);
     }
   });
-  it("Moxon and quad hoods shrink to keep the gap from the spreader hub (30 … 12 mm cube), or report no room", () => {
-    for (const [id, f] of [["moxon", 145e6], ["moxon", 435e6], ["quad", 435e6], ["moxon", 2.4e9], ["quad", 2.4e9]] as const) {
-      const { p, d } = setup(id, { bands: `${f * 0.99}-${f * 1.01}` }), plan = shellPlan(id, p, d);
-      if (plan.kind !== "feed") throw new Error(id);
-      const spec = partsFor(id, p, d).find((s) => s.id === "shell")!, r = buildPart(M, spec, id), h = built(plan, id, p, d);
-      const tag = `${id} ${f / 1e6}`;
-      if (!h) { expect(r.ok, tag).toBe(false); if (!r.ok) expect(r.error.s, tag).toBe(FAIL.room); continue; }
-      expect(r.ok, tag).toBe(true);
-      const { wall, gap } = STYLE[styleOf(d)], side = h.inner.hi[0] - h.inner.lo[0] - 2 * gap;
-      expect(side, tag).toBeGreaterThanOrEqual(12 - 1e-9); expect(side, tag).toBeLessThanOrEqual(30 + 1e-9);
-      const [hub] = partsFor(id, p, d).find((s) => s.id === `${id}-hub`)!.build(M);
-      const hubs = id === "moxon" ? [hub] : quadGeometry(d).loops.map((l) => hub.translate([l.x, 0, 0]));
-      const keep = box(M, add(h.inner.lo, [-wall - gap, -wall - gap, -wall - gap]), add(h.inner.hi, [wall + gap, wall + gap, wall + gap]));
-      for (const q of hubs) expect(q.intersect(keep).volume(), tag).toBeLessThan(1e-2);
+  it("the 2.4 GHz dipole and the 5.8 GHz ground plane get a case; the hardware stays in the cavity, clear of the walls", () => {
+    for (const [id, extra] of [["dipole", { bands: "2400e6-2483e6" }], ["groundplane", { bands: "5725e6-5875e6" }]] as const) {
+      const { p, d } = setup(id, extra), plan = shellPlan(id, p, d), hw = hardwareBox(id, p, d)!;
+      expect(plan.kind, id).toBe("box");
+      if (plan.kind !== "box") continue;
+      for (let i = 0; i < 3; i++) { expect(hw.lo[i] - plan.inner.lo[i], id).toBeGreaterThanOrEqual(1 - 1e-9); expect(plan.inner.hi[i] - hw.hi[i], id).toBeGreaterThanOrEqual(1 - 1e-9); }
     }
-  }, 60_000);
+  });
+  it("the discone radome is wide enough for its hub", () => {
+    const { p, d } = setup("discone", { bands: "2000e6-6000e6" }), pl = shellPlan("discone", p, d);
+    expect(pl.kind).toBe("dome");
+    if (pl.kind === "dome") expect(pl.opts.r).toBeGreaterThanOrEqual(hardwareBox("discone", p, d)!.hi[0] + 1 - 1e-9);
+  });
+  it("hardware beyond the bed (a 145 MHz dipole, GP, Moxon, quad; a Yagi at any band) gets no case", () => {
+    for (const [id, bands] of [["dipole", "144e6-146e6"], ["groundplane", "144e6-146e6"], ["yagi", "144e6-146e6"], ["yagi", "2400e6-2483e6"], ["yagi", "5725e6-5875e6"], ["moxon", "144e6-146e6"], ["quad", "144e6-146e6"]] as const) {
+      const { p, d } = setup(id, { bands });
+      expect(shellPlan(id, p, d).kind, `${id} ${bands}`).toBe("none");
+      expect(partsFor(id, p, d).some((q) => q.id === "shell"), `${id} ${bands}`).toBe(false);
+    }
+  });
+  it("the case is tight: 1 mm gap, 1.2 mm (FPV) / 1.6 mm (outdoor) wall; no screw ears", () => {
+    const fpv = setup("jpole", { bands: "2400e6-2483e6" }).d, out = setup("jpole", { bands: "430e6-440e6" }).d;
+    expect(STYLE[styleOf(fpv)]).toEqual({ wall: 1.2, gap: 1 });
+    expect(STYLE[styleOf(out)]).toEqual({ wall: 1.6, gap: 1 });
+    for (const st of Object.values(SHELL_HOWTO).flat()) expect(st).not.toMatch(/screws and nuts|M3 screws and nuts/);
+    expect(SHELL_HOWTO.box.join(" ")).toMatch(/Press the top half/);
+  });
   it("full shells keep the gap from every live wire", () => {
-    for (const [id, extra] of [["jpole", { bands: "2400e6-2483e6" }], ["helix", {}], ["helix", { bands: "5725e6-5875e6", d: 1e-3, turns: 5 }], ["collinear", { bands: "5742e6-5858e6" }], ["biquad", {}]] as const) {
+    for (const [id, extra] of [["jpole", { bands: "2400e6-2483e6" }], ["helix", {}], ["helix", { bands: "5725e6-5875e6", d: 1e-3, turns: 5 }], ["collinear", { bands: "5742e6-5858e6" }], ["biquad", {}] ] as const) {
       const { p, d } = setup(id, extra);
       const plan = shellPlan(id, p, d);
-      expect(plan.kind === "feed", `${id} ${JSON.stringify(extra)}`).toBe(false);
+      if (plan.kind === "none") continue;
       const shell = M.Manifold.union(partsFor(id, p, d).find((s) => s.id === "shell")!.build(M).map((s, i, all) => s.translate([0, 0, plan.pieceZ?.(i, all.length) ?? 0])).map((s) => s.translate(plan.toWorld ?? [0, 0, 0])));
-      const gap = STYLE[styleOf(d)].gap;
+      // the 1 mm gap, less the tongue that stands up to 0.5 mm inside the wall: at least CLEAR of air round every wire
       for (const w of d.wires.filter((x) => !x.drawOnly && !x.necOnly)) {
-        const a = w.a.map((v) => v * 1000) as [number, number, number], b = w.b.map((v) => v * 1000) as [number, number, number];
-        expect(shell.intersect(rod(M, a, b, 2 * w.r * 1000 + 2 * (gap - 0.1))).volume(), `${id} wire`).toBeLessThan(1e-2);
+        const a = w.a.map((v) => v * 1000) as V3, b = w.b.map((v) => v * 1000) as V3;
+        expect(shell.intersect(rod(M, a, b, 2 * w.r * 1000 + 2 * (CLEAR - 0.02))).volume(), `${id} wire`).toBeLessThan(1e-2);
       }
     }
   }, 120_000);
-  const bands5 = "3.5e6-3.8e6;7e6-7.2e6;10.1e6-10.15e6;14e6-14.35e6;18e6-18.2e6";
-  const hoodCases: [string, Params][] = [
-    ...wireIds.map((id): [string, Params] => [id, {}]),
-    ["dipole", { droop: 0 }], ["dipole", { droop: 60 }], ["groundplane", { droop: 0 }], ["groundplane", { droop: 60 }],
-    ["fandipole", { fan: 5, bands: bands5 }], ["fandipole", { fan: 45, bands: bands5 }], ["yagi", { boom: "through" }], ["yagi", { driven: "split" }],
-    ["discone", { rods: 6 }], ["discone", { rods: 32 }],
-  ];
-  const hoods = () => hoodCases.map(([id, extra]) => {
-    const { p, d } = setup(id, extra);
-    return { id, extra, p, d, plan: shellPlan(id, p, d), spec: partsFor(id, p, d).find((s) => s.id === "shell")! };
-  }).filter((h) => h.plan.kind === "feed");
-  it("feed hoods: one solid, every exit ray clear, every slot open straight down past the bottom", () => {
-    const hs = hoods();
-    expect(hs.map((h) => h.id)).toEqual(expect.arrayContaining(["dipole", "fandipole", "groundplane", "yagi", "discone"]));
-    for (const { id, extra, p, d, plan, spec } of hs) {
-      if (plan.kind !== "feed") continue;
-      const fh = built(plan, id, p, d)!;
-      const tag = `${id} ${JSON.stringify(extra)}`;
-      const r = buildPart(M, spec, id);
-      expect(r.ok, tag).toBe(true);
-      const [h] = spec.build(M);
-      expect(h.decompose().length, tag).toBe(1);
-      const wall = STYLE[styleOf(d)].wall, z0 = fh.inner.lo[2];
-      for (const x of fh.exits) {
-        if (Math.abs(x.at[2] - z0) < 1e-6 && x.dir[2] < 0) continue;          // out through the open bottom
-        // probe with the exit's own shape: a lug (w) as its bar, a wire as a rod of its diameter
-        const probe = (a: V3, b: V3) => (x.w ? bar(M, a, b, x.w) : rod(M, a, b, x.d));
-        expect(h.intersect(probe(add(x.at, scale(x.dir, -1)), add(x.at, scale(x.dir, wall + 10)))).volume(), `${tag} exit ${x.at}`).toBeLessThan(1e-2);
-        if (!near(x.at[2], fh.inner.hi[2])) expect(h.intersect(probe(x.at, [x.at[0], x.at[1], z0 - 5])).volume(), `${tag} slot ${x.at}`).toBeLessThan(1e-2);
-        else if (!roundHole(x, fh.inner)) for (const q of lPath(M, x, fh.inner, wall)) expect(h.intersect(q).volume(), `${tag} L-slot ${x.at}`).toBeLessThan(1e-2);
-      }
-    }
-  }, 120_000);
-  it("feed hoods fit over their feed part, and the dipole hood stays small", () => {
-    const feedPart: Record<string, string> = { dipole: "dipole-centre", fandipole: "fan-centre", groundplane: "gp-hub", discone: "discone-hub", yagi: "yagi-driven" };
-    for (const { id, extra, d, plan, spec } of hoods()) {
-      const fid = feedPart[id], part = partsFor(id, setup(id, extra).p, d).find((s) => s.id === fid);
-      if (!part) continue;
-      const fp = feedPoint(d);
-      const placed = part.build(M)[0].translate(id === "yagi" ? fp : [0, 0, 0]);   // the yagi block is built in its own frame
-      expect(placed.intersect(spec.build(M)[0]).volume(), `${id} ${JSON.stringify(extra)}`).toBeLessThan(1e-2);
-      if (id === "dipole" && !Object.keys(extra).length) {
-        const b = spec.build(M)[0].boundingBox();
-        [0, 1, 2].forEach((i) => expect(b.max[i] - b.min[i]).toBeLessThanOrEqual(70));
-      }
-      expect(plan.kind).toBe("feed");
-    }
-  }, 120_000);
-  it("the GP mast ends at the hood's bottom edge: a Ø30 mast up to it is clear, 5 mm higher it hits the hood", () => {
-    for (const droop of [0, 45, 60]) {
-      const { p, d } = setup("groundplane", { droop });
-      const h = partsFor("groundplane", p, d).find((s) => s.id === "shell")!.build(M)[0];
-      const m = gpMastAxis(d);
-      expect(h.boundingBox().min[2]).toBeCloseTo(GP_MAST_TOP, 6);
-      const mast = (top: number) => rod(M, [m[0], m[1], -200], [m[0], m[1], top], 30);
-      expect(h.intersect(mast(GP_MAST_TOP - 0.01)).volume(), `${droop}`).toBeLessThan(1e-2);
-      expect(h.intersect(mast(GP_MAST_TOP + 5)).volume(), `${droop}`).toBeGreaterThan(1);
-    }
-  });
-  it("hood how-to: the GP says where the mast ends, the dipole and fan pass the rope through the top", () => {
-    const steps = (id: string) => { const { p, d } = setup(id); return partsFor(id, p, d).find((s) => s.id === "shell")!.howTo.map((m) => m.s); };
-    expect(steps("groundplane")).toContain(SHELL_HOWTO.gpMast[0]);
-    for (const id of ["dipole", "fandipole"]) { expect(steps(id)).toContain(SHELL_HOWTO.halyard[0]); expect(steps(id)).not.toContain(SHELL_HOWTO.gpMast[0]); }
-    expect(steps("moxon")).not.toContain(SHELL_HOWTO.halyard[0]);
-  });
-  it("wide 5-band fans keep their hood roof: ≥ 70 % over the hub where the lugs allow it, else within 6 points of the ceiling", () => {
-    // Steep fan lugs rise through the roof plane over the hub ends, and the halyard needs its Ø8 hole: the roof that can
-    // stay ("ceiling") is 72 % at 30° and 52 % at 45°, so 70 % is asserted only where the ceiling leaves room for the
-    // 1.3 mm clearance; past that the hood may lose no more than the clearance beyond what the fan centre itself needs.
-    for (const fan of [20, 25, 30, 35, 45]) {
-      const { p, d } = setup("fandipole", { fan, bands: bands5 });
-      const plan = shellPlan("fandipole", p, d);
-      expect(plan.kind).toBe("feed");
-      const { wireD, gap: g } = dipoleArms(d, ["driven", "parasitic"]), hb = centreHubBox(g, wireD), z = plan.inner.hi[2], wall = STYLE[styleOf(d)].wall;
-      const roof = box(M, [hb.lo[0], hb.lo[1], z], [hb.hi[0], hb.hi[1], z + wall]), v = roof.volume();
-      const specs = partsFor("fandipole", p, d), h = specs.find((s) => s.id === "shell")!.build(M)[0];
-      const need = specs[0].build(M)[0].intersect(roof).volume() / v + roof.intersect(rod(M, [0, 0, z - 1], [0, 0, z + wall + 1], 8)).volume() / v;
-      const fill = h.intersect(roof).volume() / v;
-      if (1 - need >= 0.75) expect(fill, `${fan}`).toBeGreaterThanOrEqual(0.7);
-      else expect(fill, `${fan}`).toBeGreaterThanOrEqual(1 - need - 0.06);
-    }
-  }, 60_000);
-  it("full boxes: the coax gland stays inside the floor, no breakout through a side wall", () => {
-    for (const [id, extra] of [["jpole", { bands: "2400e6-2483e6" }], ["biquad", {}]] as const) {
+  it("full boxes: the coax hole goes through the floor only, the walls stay closed", () => {
+    for (const [id, extra] of [["jpole", { bands: "2400e6-2483e6" }], ["biquad", {}], ["collinear", { bands: "5742e6-5858e6" }]] as const) {
       const { p, d } = setup(id, extra);
       const plan = shellPlan(id, p, d);
       expect(plan.kind, id).toBe("box");
-      const wall = STYLE[styleOf(d)].wall, i = plan.inner;
+      if (plan.kind !== "box") continue;
+      const wall = STYLE[styleOf(d)].wall, i = plan.inner, g = plan.gland;
       const shell = M.Manifold.union(partsFor(id, p, d).find((s) => s.id === "shell")!.build(M));
-      const band = box(M, [i.lo[0] - wall, i.lo[1] - wall, i.lo[2] - wall], [i.hi[0] + wall, i.hi[1] + wall, i.hi[2] + wall]).subtract(box(M, [i.lo[0], i.lo[1], i.lo[2] - wall - 1], [i.hi[0], i.hi[1], i.hi[2] + wall + 1]));
-      expect(shell.intersect(band).volume() / band.volume(), id).toBeGreaterThan(0.99);
+      const o = { lo: i.lo.map((v) => v - wall) as V3, hi: i.hi.map((v) => v + wall) as V3 };
+      expect(g[0] - 1.75, id).toBeGreaterThanOrEqual(o.lo[0] - 1e-9); expect(g[0] + 1.75, id).toBeLessThanOrEqual(o.hi[0] + 1e-9);
+      expect(g[1] - 1.75, id).toBeGreaterThanOrEqual(o.lo[1] - 1e-9); expect(g[1] + 1.75, id).toBeLessThanOrEqual(o.hi[1] + 1e-9);
+      expect(shell.intersect(rod(M, [g[0], g[1], o.lo[2] - 5], [g[0], g[1], i.lo[2] + 0.5], 3.4)).volume(), id).toBeLessThan(1e-2);
+      // side walls: the outer 0.4 mm skin is solid all round
+      const skin = box(M, [o.lo[0], o.lo[1], i.lo[2]], [o.hi[0], o.hi[1], i.hi[2]]).subtract(box(M, [o.lo[0] + 0.4, o.lo[1] + 0.4, i.lo[2] - 1], [o.hi[0] - 0.4, o.hi[1] - 0.4, i.hi[2] + 1]));
+      expect(shell.intersect(skin).volume() / skin.volume(), id).toBeGreaterThan(0.99);
     }
   });
-  it("roof exits: the GP radiator and the dipole halyard keep round holes; a closed biquad loop gets L-slots open to the bottom", () => {
-    const roofExits = (id: string, extra: Params = {}) => {
-      const { p, d } = setup(id, extra), plan = shellPlan(id, p, d);
-      expect(plan.kind, id).toBe("feed");
-      return { plan, xs: plan.kind === "feed" ? plan.exits.filter((x) => near(x.at[2], plan.inner.hi[2])) : [] };
-    };
-    for (const id of ["groundplane", "dipole"]) {
-      const { plan, xs } = roofExits(id);
-      expect(xs.length, id).toBeGreaterThan(0);
-      for (const x of xs) expect(roundHole(x, plan.inner), id).toBe(true);
+});
+
+describe("shellOutline", () => {
+  it("agrees with the built shell within 0.5 mm for every def that has one, at defaults and across the bands", () => {
+    const FREQS = [undefined, 145e6, 435e6, 868e6, 1.2e9, 2.4e9, 5.8e9];
+    for (const def of ANTENNAS) for (const f of FREQS) {
+      const extra: Params = f ? { bands: `${f * 0.99}-${f * 1.01}` } : {};
+      if (f && !def.params.some((q) => q.key === "bands")) continue;
+      const { p, d } = setup(def.id, extra), out = shellOutline(def.id, p, d), tag = `${def.id} ${f ?? "default"}`;
+      const spec = partsFor(def.id, p, d).find((s) => s.id === "shell");
+      if (out === null) continue;                                             // the family's own cover
+      if ("none" in out) { expect(spec, tag).toBeUndefined(); continue; }
+      expect(spec, tag).toBeDefined();
+      const r = buildPart(M, spec!, def.id);
+      if (!r.ok) continue;                                                    // reported cleanly (checked elsewhere)
+      const segs = spec!.build(M), s = sizeOf(segs);
+      const w: V3 = [out.hi[0] - out.lo[0], out.hi[1] - out.lo[1], out.hi[2] - out.lo[2]];
+      if (out.kind === "box") for (let i = 0; i < 3; i++) expect(Math.abs(s[i] - w[i]), `${tag} axis ${i}: ${s[i]} vs ${w[i]}`).toBeLessThan(0.5);
+      else {
+        // stacked pieces: the skirts of the upper pieces reach (wall + CLEAR) past the wall; heights add up with the overlap
+        const slack = segs.length > 1 ? 2 * (out.wall + 0.3) + 0.5 : 0.5;
+        expect(Math.abs(s[0] - w[0]), `${tag} x`).toBeLessThan(slack); expect(Math.abs(s[1] - w[1]), `${tag} y`).toBeLessThan(slack);
+        if (segs.length === 1) expect(Math.abs(s[2] - w[2]), `${tag} z`).toBeLessThan(0.5);
+        expect(out.round!.r, tag).toBeGreaterThan(0);
+        expect(out.round!.apex, tag).toBeCloseTo(out.hi[2], 6);
+      }
+      for (const v of w) expect(v, tag).toBeLessThanOrEqual(segs.length > 1 && out.kind === "dome" ? 3 * MAX_SIZE : MAX_SIZE + 1e-6);
     }
-    const { p, d } = setup("biquad", { bands: "1188e6-1212e6" }), { plan, xs } = roofExits("biquad", { bands: "1188e6-1212e6" });
-    expect(xs.length).toBeGreaterThan(0);
-    const wall = STYLE[styleOf(d)].wall, h = partsFor("biquad", p, d).find((s) => s.id === "shell")!.build(M)[0];
-    for (const x of xs) {
-      expect(roundHole(x, plan.inner)).toBe(false);
-      for (const q of lPath(M, x, plan.inner, wall)) expect(h.intersect(q).volume(), `${x.at}`).toBeLessThan(1e-2);
-    }
+  }, 300_000);
+  it("is pure: no manifold needed, and `none` carries the reason", () => {
+    const { p, d } = setup("yagi");
+    expect(shellOutline("yagi", p, d)).toEqual({ none: "too large" });
+    const j = setup("jpole", { bands: "2400e6-2483e6" });
+    const o = shellOutline("jpole", j.p, j.d);
+    expect(o && !("none" in o) && o.kind).toBe("box");
+    expect(shellOutline("skycone8", ...(() => { const s = setup("skycone8"); return [s.p, s.d] as const; })())).toBeNull();
   });
-  it("a synthetic loop crossing a hood roof: L-slots, the hood lowers over it", () => {
-    const mk = (pts: V3[]): Design => ({ ...setup("dipole").d, feed: undefined, wires: pts.slice(1).map((q, i) => ({ a: scale(pts[i], 1e-3), b: scale(q, 1e-3), r: 1e-3 })) });
-    const inner: Box3 = { lo: [-15, -15, -15], hi: [15, 15, 15] };
-    const xs = exits(mk([[-6, 3, 0], [-6, 3, 40], [8, 3, 40], [8, 3, 0], [-6, 3, 0]]), inner);
-    expect(xs.length).toBe(2);
-    expect(xs.some((x) => roundHole(x, inner))).toBe(false);
-    const h = hood(M, { inner, wall: 2, exits: xs })[0];
-    expect(h.decompose().length).toBe(1);
-    for (const x of xs) for (const q of lPath(M, x, inner, 2)) expect(h.intersect(q).volume(), `${x.at}`).toBeLessThan(1e-3);
-  });
-  it("helix too large for a dome: a jack cover under the reflector, nothing above z = 0, the coax hole clear", () => {
-    for (const bands of ["144e6-146e6", "430e6-440e6"]) {
-      const { p, d } = setup("helix", { bands });
-      const plan = shellPlan("helix", p, d);
-      expect(plan.kind, bands).toBe("jack");
-      const spec = partsFor("helix", p, d).find((s) => s.id === "shell")!;
-      expect(buildPart(M, spec, "helix").ok).toBe(true);
-      const [h] = spec.build(M), b = h.boundingBox();
-      expect(h.decompose().length).toBe(1);
-      expect(b.max[2]).toBeLessThanOrEqual(1e-6);
-      expect(b.min[2]).toBeCloseTo(plan.inner.lo[2] - STYLE[styleOf(d)].wall, 6);
-      expect(plan.inner.hi[2]).toBe(0);
-      expect(plan.inner.hi[0] - plan.inner.lo[0]).toBeCloseTo(30 + 2 * STYLE[styleOf(d)].gap, 6);
-      expect(plan.inner.lo[2]).toBeCloseTo(-30 - STYLE[styleOf(d)].gap, 6);
-      expect(h.intersect(box(M, plan.inner.lo, [plan.inner.hi[0], plan.inner.hi[1], 1])).volume()).toBeLessThan(1e-3);   // open face up
-      expect(h.intersect(rod(M, [0, 0, plan.inner.lo[2] - 10], [0, 0, 1], JACK_HOLE - 0.1)).volume()).toBeLessThan(1e-3);
-      expect(spec.howTo.map((m) => m.s)).toEqual(SHELL_HOWTO.jack);
-    }
-  }, 60_000);
 });
 
 /** World-frame family parts that sit inside or next to the antenna, moved from their own build frame: a full box must
- *  keep them outside its walls, and the Moxon and quad hoods must keep off the spreader hubs. */
-const WORLD: Record<string, (q: Manifold, d: Design) => Manifold[]> = {
-  "dipole-centre": (q) => [q], "fan-centre": (q) => [q], "gp-hub": (q) => [q], "discone-hub": (q) => [q], "helix-tube": (q) => [q], "helix-frame": (q) => [q],
+ *  keep them outside its walls. */
+const WORLD: Record<string, (q: Manifold, d: ReturnType<typeof setup>["d"]) => Manifold[]> = {
+  "dipole-centre": (q) => [q], "fan-centre": (q) => [q], "fan-spreader-1": (q) => [q, q.mirror([0, 1, 0])], "fan-spreader-2": (q) => [q, q.mirror([0, 1, 0])], "gp-hub": (q) => [q], "discone-hub": (q) => [q], "helix-tube": (q) => [q], "helix-frame": (q) => [q],
   "yagi-driven": (q, d) => [q.translate(feedPoint(d))],
   "biquad-standoff": (q) => [q.transform([0, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1])],   // its print frame (z up from the reflector) back to x up
   "moxon-hub": (q) => [q],
   "quad-hub": (q, d) => quadGeometry(d).loops.map((l) => q.translate([l.x, 0, 0])),   // one per loop
 };
 const FREQS = [50e6, 145e6, 435e6, 868e6, 1.2e9, 2.4e9, 5.8e9];
-const ALLOWED = ["Too large to print in one piece: {0}", FAIL.thick, FAIL.radome, FAIL.hood, FAIL.room];
+const ALLOWED = ["Too large to print in one piece: {0}", FAIL.thick, FAIL.radome];
 
 describe("shells across the frequency range", () => {
-  it("every wire antenna × 50 MHz … 5.8 GHz: builds or fails cleanly; boxes clear of world-frame parts; hoods open below", () => {
+  it("every wire antenna × 50 MHz … 5.8 GHz: no shell, or one that builds within 180 mm and clear of world-frame family parts", () => {
     for (const id of wireIds) for (const f of FREQS) {
       const { p, d } = setup(id, { bands: `${f * 0.99}-${f * 1.01}` });
-      const tag = `${id} ${f / 1e6} MHz`, plan = shellPlan(id, p, d), specs = partsFor(id, p, d), spec = specs.find((s) => s.id === "shell")!;
+      const tag = `${id} ${f / 1e6} MHz`, plan = shellPlan(id, p, d), specs = partsFor(id, p, d), spec = specs.find((s) => s.id === "shell");
+      if (!spec) { if (!id.startsWith("skycone")) expect(plan.kind, tag).toBe("none"); continue; }
       const r = buildPart(M, spec, id);
       if (!r.ok) { expect(ALLOWED, `${tag} ${r.error.s} ${JSON.stringify(r.error.a)}`).toContain(r.error.s); continue; }
-      const { wall } = STYLE[styleOf(d)], shell = spec.build(M);
-      if (plan.kind === "box" || (plan.kind === "feed" && plan.hub)) {
+      for (const g of r.segments) expect(Math.max(...g.size), tag).toBeLessThanOrEqual(MAX_SIZE + 1e-6);
+      const shell = spec.build(M);
+      if (plan.kind === "box") {
         for (const s of specs.filter((q) => WORLD[q.id])) {
           let parts: Manifold[];
           try { parts = s.build(M); } catch { continue; }                     // a family part that cannot be built here
           for (const q of parts.flatMap((x) => WORLD[s.id](x, d))) expect(shell.reduce((a, h) => a + h.intersect(q).volume(), 0), `${tag} ${s.id}`).toBeLessThan(1e-2);
-        }
-      }
-      if (id === "helix" && plan.kind !== "dome") expect(shell[0].boundingBox().max[2], tag).toBeLessThanOrEqual(1e-6);
-      if (plan.kind === "feed") {
-        const fh = built(plan, id, p, d)!, [h] = shell, z0 = fh.inner.lo[2];
-        for (const x of fh.exits) {
-          if (near(x.at[2], z0) && x.dir[2] < 0) continue;
-          const probe = (a: V3, b: V3) => (x.w ? bar(M, a, b, x.w) : rod(M, a, b, x.d));
-          if (!near(x.at[2], fh.inner.hi[2])) expect(h.intersect(probe(x.at, [x.at[0], x.at[1], z0 - 5])).volume(), `${tag} slot ${x.at}`).toBeLessThan(1e-2);
-          else if (!roundHole(x, fh.inner)) for (const q of lPath(M, x, fh.inner, wall)) expect(h.intersect(q).volume(), `${tag} L-slot ${x.at}`).toBeLessThan(1e-2);
         }
       }
     }

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
 import { loadManifold } from "../manifold";
 import { box } from "../shapes";
-import { clamshell, EAR_R, earCentres } from "./clamshell";
+import { clamshell } from "./clamshell";
 
 let M: ManifoldToplevel;
 beforeAll(async () => { M = await loadManifold(); });
@@ -23,25 +23,10 @@ describe("clamshell", () => {
     const shell = bot.add(top);
     expect(shell.intersect(wallBand).volume() / wallBand.volume()).toBeGreaterThan(0.95);
   });
-  it("screw ears: an M3 hole goes through both halves at every ear", () => {
-    const [bot, top] = clamshell(M, { inner, wall: 2, splitZ: 0 });
-    for (const c of earCentres(inner, 2)) {
-      const screw = M.Manifold.cylinder(100, 1.5, 1.5, 16).translate([c[0], c[1], -50]);
-      expect(bot.add(top).intersect(screw).volume()).toBeLessThan(1e-3);
-      const ring = M.Manifold.cylinder(10, 3.5, 3.5, 24).subtract(M.Manifold.cylinder(10, 2.2, 2.2, 24)).translate([c[0], c[1], -5]);
-      expect(bot.add(top).intersect(ring).volume()).toBeGreaterThan(1);
-    }
-  });
   it("applies the cuts to both halves", () => {
     const hole = M.Manifold.cylinder(40, 4, 4, 24).rotate([0, 90, 0]).translate([20, 0, 0]);
     const [bot, top] = clamshell(M, { inner, wall: 2, splitZ: 0, cuts: [hole] });
     expect(bot.add(top).intersect(M.Manifold.cylinder(10, 3.5, 3.5, 24).rotate([0, 90, 0]).translate([28, 0, 0])).volume()).toBeLessThan(1e-3);
-  });
-  it("ears stay within 7 mm of the outer wall", () => {
-    const [bot, top] = clamshell(M, { inner, wall: 2, splitZ: 0 });
-    const bb = bot.add(top).boundingBox();
-    expect(bb.max[0]).toBeCloseTo(30 + 2 + 7, 3);
-    expect(bb.min[1]).toBeCloseTo(-20 - 2 - 7, 3);
   });
 
   const thin = { lo: [-20, -15, -2.3] as [number, number, number], hi: [20, 15, 2.3] as [number, number, number] };
@@ -59,29 +44,9 @@ describe("clamshell", () => {
       expect(ff).toBeGreaterThanOrEqual(0.99);
     });
   }
-  it("outdoor: the outer wall beside the recess is at least 0.6 mm", () => {
-    const [bot, top] = clamshell(M, { inner, wall: 2, splitZ: 0 });
-    const band = box(M, [31.4, -15, 0], [32, 15, 3.3]);
-    const f = frac(top, band);
-    expect(f).toBeGreaterThanOrEqual(0.99);
-    expect(bot.boundingBox().max[2]).toBeGreaterThan(0);
-  });
-  it("thin FPV-like case gets a flat joint (no lip)", () => {
-    const [bot, top] = clamshell(M, { inner: thin, wall: 1.2, splitZ: 0 });
-    expect(bot.boundingBox().max[2]).toBeCloseTo(0, 3);
-    expect(top.boundingBox().min[2]).toBeCloseTo(0, 3);
-  });
   it("splitZ outside the cavity throws", () => {
     expect(() => clamshell(M, { inner, wall: 2, splitZ: 15 })).toThrow();
     expect(() => clamshell(M, { inner, wall: 2, splitZ: -10 })).toThrow();
-  });
-  it("nut pocket is at the bottom only: the top face of the top half is solid round the hole", () => {
-    const [bot, top] = clamshell(M, { inner, wall: 2, splitZ: 0 });
-    const c = earCentres(inner, 2)[0];
-    const hex = M.Manifold.cylinder(2.8, 3.3, 3.3, 6).subtract(M.Manifold.cylinder(2.8, 2, 2, 16)).translate([c[0], c[1], 17 - 2.8]);
-    expect(top.intersect(hex).volume()).toBeGreaterThan(0.9 * hex.volume());
-    const pocket = M.Manifold.cylinder(2.8, 3.3, 3.3, 6).subtract(M.Manifold.cylinder(2.8, 2, 2, 16)).translate([c[0], c[1], -12]);
-    expect(bot.intersect(pocket).volume()).toBeLessThan(1e-3);
   });
   it("the drain goes through the floor only", () => {
     const [bot, top] = clamshell(M, { inner, wall: 2, splitZ: 0, drain: true });
@@ -91,15 +56,25 @@ describe("clamshell", () => {
     expect(top.intersect(roofProbe).volume()).toBeGreaterThan(0.99 * roofProbe.volume());
     expect(bot.add(top).volume()).toBeLessThan(clamshell(M, { inner, wall: 2, splitZ: 0 }).reduce((a, m) => a + m.volume(), 0));
   });
-  it("ear bridges stay at their corner for a box far from the origin", () => {
-    const far = { lo: [300, 40, 10] as [number, number, number], hi: [360, 80, 40] as [number, number, number] }, wall = 2;
-    const out = { lo: far.lo.map((v) => v - wall) as [number, number, number], hi: far.hi.map((v) => v + wall) as [number, number, number] };
-    for (const half of clamshell(M, { inner: far, wall, splitZ: 25 })) {
-      const bb = half.boundingBox(), h = bb.max[2] - bb.min[2];
-      let rest = half.subtract(box(M, [out.lo[0], out.lo[1], bb.min[2] - 1], [out.hi[0], out.hi[1], bb.max[2] + 1]));
-      for (const c of earCentres(far, wall)) rest = rest.subtract(M.Manifold.cylinder(h + 2, EAR_R, EAR_R, 24).translate([c[0], c[1], bb.min[2] - 1]));
-      // a correct bridge only fills the corner between the ear circle and the box corner (16 − π·4²/4 ≈ 3.4 mm² each)
-      expect(rest.volume()).toBeLessThan(4 * 5 * h);
+  it("no ears: the outer size is the cavity plus two walls in every direction", () => {
+    for (const [inn, wall] of [[inner, 2], [thin, 1.2], [inner, 1.6]] as const) {
+      const bb = M.Manifold.union(clamshell(M, { inner: inn, wall, splitZ: 0 })).boundingBox();
+      for (let i = 0; i < 3; i++) { expect(bb.min[i]).toBeCloseTo(inn.lo[i] - wall, 4); expect(bb.max[i]).toBeCloseTo(inn.hi[i] + wall, 4); }
+    }
+  });
+  it("tongue: the bottom half's lip stands inside the top half's skin with a CLEAR fit, the halves do not touch", () => {
+    for (const [inn, wall] of [[inner, 1.6], [inner, 1.2]] as const) {
+      const [bot, top] = clamshell(M, { inner: inn, wall, splitZ: 0 });
+      expect(bot.boundingBox().max[2], `${wall}`).toBeCloseTo(3, 3);                      // 3 mm tall
+      expect(bot.intersect(top).volume(), `${wall}`).toBeLessThan(1e-3);
+      // the tongue is 0.8 mm wide, ring-shaped, and the top half's skin is outside it
+      const band = box(M, [inn.hi[0], -10, 0.5], [inn.hi[0] + wall, 10, 2.5]);
+      expect(frac(bot, band) + frac(top, band), `${wall}`).toBeGreaterThan(0.4);
+      expect(frac(top, band), `${wall}`).toBeGreaterThan(0.2);                            // the skin is there
+      expect(frac(bot, band), `${wall}`).toBeGreaterThan(0.2);                            // so is the tongue
+      expect(frac(bot, box(M, [inn.hi[0] + wall - 0.6, -10, 0.5], [inn.hi[0] + wall, 10, 2.5])), `${wall}`).toBeLessThan(1e-9);   // nothing of the tongue in the skin
+      // the tongue never protrudes more than 0.5 mm into the cavity (the antenna is 1 mm away)
+      expect(bot.intersect(box(M, [inn.lo[0] + 0.5, inn.lo[1] + 0.5, 0.05], [inn.hi[0] - 0.5, inn.hi[1] - 0.5, 4])).volume(), `${wall}`).toBeLessThan(1e-3);
     }
   });
 });

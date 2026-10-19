@@ -2,6 +2,7 @@ import type { Design, Params } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { CLEAR, INSULATE, M3_NUT_DEPTH, WALL, ZIP_T, ZIP_W, mm } from "../rules";
 import { box, m3, rod, zipSlot, type V3 } from "../shapes";
+import { merge, shift, type Ext } from "./extent";
 
 /** Yagi: element clips, driven-element block, or a drilling guide for through-boom elements. */
 export const BOOM_STRINGS = [
@@ -129,4 +130,18 @@ export function yagiParts(p: Params, d: Design): PartSpec[] {
     },
   };
   return [clip, driven];
+}
+
+/** The driven block and the element clips in the world frame (mm), or null when the elements go through the boom (only a
+ *  drilling guide, a jig). Clips sit on every element that is not the driven one, the block at the feed. */
+export function yagiHardwareBox(p: Params, d: Design, feed: V3): Ext | null {
+  if (p.boom === "through") return null;
+  const { elemD, boomD } = yagiGeometry(d);
+  const ch = elemD + CLEAR, bc = boomD + CLEAR;
+  const Y = bc / 2 + 2 * WALL + ZIP_T, zb = -(bc / 2 + INSULATE + ch / 2), L = Math.max(ch + 2 * ZIP_W + 4 * WALL, 16);
+  const clip: Ext = { lo: [-L / 2, -Y, zb], hi: [L / 2, Y, ch / 2 + WALL + M3_NUT_DEPTH + 1] };
+  const driven = yagiDrivenBox(d);
+  const others = d.wires.filter((w) => !w.drawOnly && !w.necOnly && w.group !== "driven" && w.group !== "feed")
+    .map((w): V3 => [(w.a[0] + w.b[0]) * 500, (w.a[1] + w.b[1]) * 500, (w.a[2] + w.b[2]) * 500]);
+  return merge(shift(driven, feed), ...others.map((c) => shift(clip, c)));
 }

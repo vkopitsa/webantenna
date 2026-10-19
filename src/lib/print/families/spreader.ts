@@ -4,6 +4,7 @@ import { num } from "../../types";
 import { msg, type PartSpec } from "../parts";
 import { CLEAR, WALL, mm } from "../rules";
 import { add, bar, box, channel, m3, rod, scale, sub, toZ, unit, zipSlot, type V3 } from "../shapes";
+import { around, merge, type Ext } from "./extent";
 
 /** Moxon and quad: spreader hubs, corner caps and the Moxon tip-gap insulator. */
 export const SPREADER_STRINGS = [
@@ -182,4 +183,40 @@ export function quadParts(p: Params, d: Design): PartSpec[] {
       build: (M) => { const at: V3 = [0, 100, 100], dir = unit(at); return [toZ(cornerCap(M, at, dir, [[0, -1, 0], [0, 0, -1]], rodD, g.wireD), at, dir)]; },
     },
   ];
+}
+
+/** A corner cap (mm): the rod sleeve from 30 mm behind the rod end to just past the wire corner. */
+function capExtent(at: V3, dir: V3, legs: [V3, V3], rodD: number, wireD: number): Ext {
+  const ch = wireD + CLEAR, so = (rodD + CLEAR) / 2 + WALL;
+  const tip = sub(at, scale(dir, capTipSetback(dir, legs, rodD, wireD)));
+  return around([sub(tip, scale(dir, 30)), add(at, scale(dir, ch / 2 + WALL))], so);
+}
+/** One socket hub at `c` (mm): the socket bars, the core disc / tube, and `extra` (the Moxon's coax clamp). */
+function hubExtent(dirs: V3[], rodD: number, core: number, c: V3, thick: number): Ext {
+  const w = Math.max(rodD + CLEAR + 2 * WALL, 12);
+  return around([...dirs.flatMap((u) => [scale(u, core - 2), scale(u, core + SOCK)]), [-core, -core, -thick / 2], [core, core, thick / 2]].map((q) => add(q as V3, c)), w / 2);
+}
+
+/** The Moxon's hub, four corner caps and tip-gap insulators in the world frame (mm). */
+export function moxonHardwareBox(p: Params, d: Design): Ext {
+  const g = moxonGeometry(d), rodD = mm(num(p, "rod", 8.5e-3)), w = Math.max(rodD + CLEAR + 2 * WALL, 12);
+  const corners: V3[] = [[g.xE, g.yA, 0], [g.xE, -g.yA, 0], [g.xR, g.yA, 0], [g.xR, -g.yA, 0]];
+  const { dirs, core } = moxonHubLayout(d, rodD);
+  const caps = corners.map((c, i) => { const a = moxonCapArgs(c, i < 2); return capExtent(a.at, a.dir, a.legs, rodD, g.wireD); });
+  const R = (g.wireD + CLEAR) / 2 + WALL + 1;
+  const tips = live(d).flatMap((x) => [mmv(x.a), mmv(x.b)]).filter((q) => Math.abs(q[0] - g.tipD) < 1e-3 || Math.abs(q[0] - g.tipR) < 1e-3);
+  return merge(hubExtent(dirs, rodD, core, [0, 0, 0], w), { lo: [-8, -6, -w / 2 - 30], hi: [8, 6, 0] }, ...caps, ...(tips.length ? [around(tips, R)] : []));
+}
+
+/** The quad's two hubs and eight corner caps in the world frame (mm). */
+export function quadHardwareBox(p: Params, d: Design): Ext {
+  const g = quadGeometry(d), rodD = mm(num(p, "rod", 8.5e-3)), bd = mm(num(p, "bd", 25e-3));
+  const { dirs, core } = quadHubLayout(rodD, bd), w = Math.max(rodD + CLEAR + 2 * WALL, 12);
+  return merge(...g.loops.flatMap((l) => {
+    const caps = ([[1, 1], [1, -1], [-1, 1], [-1, -1]] as const).map(([sy, sz]) => {
+      const at: V3 = [l.x, sy * l.h, sz * l.h], dir = unit([0, sy, sz]);
+      return capExtent(at, dir, [[0, -sy, 0], [0, 0, -sz]], rodD, g.wireD);
+    });
+    return [hubExtent(dirs, rodD, core, [l.x, 0, 0], 2 * core + 2), around([[l.x - w / 2, 0, 0], [l.x + w / 2, 0, 0]], core + 1), ...caps];
+  }));
 }

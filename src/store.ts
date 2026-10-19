@@ -26,6 +26,8 @@ export interface State {
   pitch: number;
   /** Draw every dimension in the Preview at once (persisted). */
   showDims: boolean;
+  /** Draw the printable case round the antenna in the Preview (persisted). */
+  showCase: boolean;
 }
 
 /** Default 3D camera angles (degrees). */
@@ -44,6 +46,7 @@ const defaults = (): State => ({
   yaw: DEFAULT_YAW,
   pitch: DEFAULT_PITCH,
   showDims: false,
+  showCase: false,
 });
 
 function load(): State {
@@ -57,6 +60,7 @@ function load(): State {
       if (o.lang === "en" || o.lang === "uk") s.lang = o.lang;
       if (o.theme === "auto" || o.theme === "light" || o.theme === "dark") s.theme = o.theme;
       if (typeof o.showDims === "boolean") s.showDims = o.showDims;
+      if (typeof o.showCase === "boolean") s.showCase = o.showCase;
       if (o.params) for (const id of Object.keys(s.params)) if (o.params[id]) s.params[id] = clean(id, o.params[id]);
     }
   } catch { /* private mode or bad JSON: defaults */ }
@@ -117,8 +121,8 @@ export const get = () => state;
 export function set(patch: Partial<State> | ((s: State) => Partial<State>)) {
   state = { ...state, ...(typeof patch === "function" ? patch(state) : patch) };
   try {
-    const { type, params, unit, lang, theme, showDims } = state;
-    localStorage.setItem(KEY, JSON.stringify({ type, params, unit, lang, theme, showDims }));
+    const { type, params, unit, lang, theme, showDims, showCase } = state;
+    localStorage.setItem(KEY, JSON.stringify({ type, params, unit, lang, theme, showDims, showCase }));
   } catch { /* ignore */ }
   subs.forEach((f) => f());
 }

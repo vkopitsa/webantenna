@@ -5,6 +5,7 @@ import { ANTENNAS } from "../antennas";
 import type { Params } from "../types";
 import { buildPart, partsFor } from ".";
 import { FAIL } from "./parts";
+import { shellOutline } from "./shells";
 import { MAX_SIZE } from "./rules";
 import { loadManifold } from "./manifold";
 import { meshOf, toSTL } from "./stl";
@@ -34,8 +35,8 @@ describe("STL writer", () => {
 });
 
 describe("partsFor", () => {
-  it("every wire antenna has at least one printed part", () => {
-    for (const def of ANTENNAS) { const d = def.build(def.defaults); if (!d.pcb && def.category !== "Printed") expect(partsFor(def.id, def.defaults, d).length, def.id).toBeGreaterThan(0); }
+  it("every wire antenna has at least one printed part, or at least reports that its case is too large", () => {
+    for (const def of ANTENNAS) { const d = def.build(def.defaults); if (!d.pcb && def.category !== "Printed" && partsFor(def.id, def.defaults, d).length === 0) expect(shellOutline(def.id, def.defaults, d), def.id).toEqual({ none: "too large" }); }
   });
   it("printed antennas have exactly one part, the shell", () => {
     for (const def of ANTENNAS) { const d = def.build(def.defaults); if (def.category === "Printed") expect(partsFor(def.id, def.defaults, d).map((s) => s.id), def.id).toEqual(["shell"]); }
@@ -55,7 +56,7 @@ describe("partsFor", () => {
         for (const s of partsFor(def.id, p, def.build(p))) {
           const r = buildPart(M, s, s.id);
           if (r.ok) r.segments.forEach((g) => expect(Math.max(...g.size)).toBeLessThanOrEqual(MAX_SIZE));
-          else expect(["Too large to print in one piece: {0}", FAIL.thick, FAIL.radome, FAIL.hood, FAIL.room], `${def.id} ${JSON.stringify(extra)} ${s.id}`).toContain(r.error.s);
+          else expect(["Too large to print in one piece: {0}", FAIL.thick, FAIL.radome], `${def.id} ${JSON.stringify(extra)} ${s.id}`).toContain(r.error.s);
         }
         cleanup(); // free each build, as buildParts() does: manifold objects otherwise pile up in the wasm heap
       }

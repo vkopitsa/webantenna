@@ -14,7 +14,7 @@ import { SPACER_HOWTO, SPACER_STRINGS, collinearParts, jpoleParts } from "./fami
 import { SKYCONE_HOWTO, SKYCONE_STRINGS, SKYCONE_TPL, skyconeParts } from "./families/skycone";
 import { BEND_HOWTO, BEND_STRINGS, bendParts, coilParts } from "./families/bend";
 import { CUTBEND_HOWTO, CUTBEND_STRINGS, cutBendParts } from "./families/cutbend";
-import { SHELL_HOWTO, SHELL_STRINGS, shellFor } from "./shells";
+import { printedShell, SHELL_HOWTO, SHELL_STRINGS, shellFor } from "./shells";
 import { en } from "../build";
 
 export { buildPart, USE_LABELS, type BuiltPart, type PartSpec, type Segment } from "./parts";
@@ -53,7 +53,7 @@ export const partsFor = (defId: string, p: Params, d: Design): PartSpec[] => {
   // printed antennas get the PCB enclosure: every one has a board model except the PCB loop (drawn as plates only);
   // a stacked build (pagoda) is round and gets a radome like the cloverleaf
   if (family.some((s) => s.id === "shell")) return family;          // the family brings its own (simulated) cover
-  const shell = shellFor(defId, p, d, (!!d.pcb && !d.pcb.levels?.length) || defId === "pcbloop");
+  const shell = shellFor(defId, p, d, printedShell(defId, d));
   return shell ? [...family, shell] : family;
 };
 

@@ -64,8 +64,9 @@ src/lib/                 NO DOM, NO React, NO i18n. Runs in Node (tests) and in 
   print/families/bend.ts bend plates + corner jigs (quad, Moxon, biquad, Yagi, cloverleaf) and the spring's coil mandrel, from Design.wires
   print/families/cutbend.ts cut board (one blind hole per cut length ≤ 170 mm, engraved numbers, slits at the bend marks), lever bender A
                          (W-10 style, bolt die + roller, stop bolts at the design's angles) and bending plate B; cutBendParts() memoised per Design (also on the sky-cone cages, helix, pagoda: board for the cut table, benders for the frames)
-  print/shells/          one `shell` part per antenna: geometry.ts (envelope, style, exits), clamshell.ts, dome.ts, hood.ts (feedpoint hood), pcbbox.ts,
-                         index.ts (shellFor)
+  print/shells/          optional `shell` part (dome where it fits, else a tight box round wires + the family's printed hardware (hardware.ts, `*HardwareBox` in families/), else none when > 180 mm):
+                         geometry.ts (envelope, STYLE: gap 1 mm, wall 1.2 fpv / 1.6 outdoor), clamshell.ts (press-fit tongue, no ears), dome.ts, pcbbox.ts,
+                         index.ts (shellPlan, shellFor, shellOutline = pure case size/silhouette for PrintPanel and the Preview "Case" toggle, components/caseLines.ts)
   drawing.ts template.ts page model in mm → PDF (own writer, Helvetica, A4) and SVG; PCB, boom strip, wire and helix templates
   synth.ts               synthesis: candidate types × bounded Nelder–Mead over each type's knobs, ranked by goal
   fdtd/mesh.ts           graded rectilinear mesh (thirds rule, smooth() with ratio 1.4, exact port/board lines)

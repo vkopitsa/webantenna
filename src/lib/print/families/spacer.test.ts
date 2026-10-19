@@ -52,11 +52,11 @@ describe("j-pole", () => {
   it("0.5 m spacing is too large, not broken", () => {
     const { p, d } = setup("jpole", { sp: 0.5 });
     const specs = partsFor("jpole", p, d);
-    for (const s of specs.filter((x) => x.id !== "shell")) {
+    for (const s of specs) {
       const r = buildPart(M, s, "x");
       expect(r.ok ? "" : r.error.s).toMatch(/^Too large/);
     }
-    expect(buildPart(M, specs.find((x) => x.id === "shell")!, "x").ok).toBe(true);   // the feed box only encloses the feed
+    expect(specs.some((x) => x.id === "shell"), "no case: larger than the bed").toBe(false);
   });
 });
 

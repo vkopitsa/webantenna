@@ -10,7 +10,10 @@ import { RadiationLayer } from "./RadiationLayer";
 import { useNearField } from "../useNearField";
 import { radiationEligible } from "../lib/simulate";
 import { C0 } from "../lib/rf";
+import { MAX_SIZE } from "../lib/print/rules";
 import { getPin, setHover, setPin, togglePin, useEffectiveHover } from "../hover";
+import { shellOutline } from "../lib/print/shells";
+import { caseLines } from "./caseLines";
 import { FIT, layoutDim, placeDims, plateSize, zoomAt, type Box, type DimGeom, type P2, type ViewXf } from "./dims";
 
 /** [yaw, pitch]: top = x right / y up; front = looking along −x (y right); side = looking along +y (x right). */
@@ -52,6 +55,7 @@ export function Preview({ design, svgRef, type, params }: { design: Design; svgR
   const setView = (v: ViewMode, extra: Partial<{ yaw: number; pitch: number }> = {}) => set(isPcb ? { pcbView: v, ...extra } : { view: v, ...extra });
   const unit = useStore((s) => s.unit);
   const showDims = useStore((s) => s.showDims);
+  const showCase = useStore((s) => s.showCase);
   const yaw = useStore((s) => s.yaw), pitch = useStore((s) => s.pitch);
   const [cy, cp] = view === "3d" ? [yaw, pitch] : VIEWS[view];
   /** One gesture at a time: rotate, pan (middle button / Shift), or pinch (two touches). `moved` tells a click from a drag. */
@@ -76,6 +80,10 @@ export function Preview({ design, svgRef, type, params }: { design: Design; svgR
   const zv = on ? FIT : vz;
   const zoomed = vz.z !== 1 || vz.x !== 0 || vz.y !== 0;
 
+  // the printable case: known before anything is built (null: the family brings its own cover; "none": too large)
+  const outline = useMemo(() => shellOutline(type, params, design), [type, params, design]);
+  const caseGeo = useMemo(() => (showCase && outline && !("none" in outline) ? caseLines(outline) : []), [showCase, outline]);
+
   const scene = useMemo(() => {
     const P = camera(cy, cp);
     const wires = design.wires.filter((w) => !w.necOnly);
@@ -94,6 +102,7 @@ export function Preview({ design, svgRef, type, params }: { design: Design; svgR
     // the compare ghost shares the camera and the fit
     const gw = (gh?.wires ?? []).filter((w) => !w.necOnly).map((w) => { const a = P(w.a), b = P(w.b); pts.push([a[0], a[1]], [b[0], b[1]]); return { a, b, r: w.r }; });
     const gp = (gh?.plates ?? []).map((p) => { const q = p.pts.map(P); q.forEach((x) => pts.push([x[0], x[1]])); return { q }; });
+    const cl = caseGeo.map((line) => line.map((q) => { const x = P(q); pts.push([x[0], x[1]]); return x; }));
     const fp = feedPoint(design);
     const xs = pts.map((x) => x[0]), ys = pts.map((x) => x[1]);
     const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -105,10 +114,10 @@ export function Preview({ design, svgRef, type, params }: { design: Design; svgR
     pp.sort((a, b) => b.z - a.z);
     // world point the field plane passes through and r is measured from: the feed, else the middle of the drawing
     const mid = wires.length ? wires.reduce<Vec3>((s, w) => [s[0] + (w.a[0] + w.b[0]) / (2 * wires.length), s[1] + (w.a[1] + w.b[1]) / (2 * wires.length), s[2] + (w.a[2] + w.b[2]) / (2 * wires.length)], [0, 0, 0]) : [0, 0, 0] as Vec3;
-    return { pw, pp, gw, gp, P, k0, ox0, oy0, fp: fp ? P(fp) : null, fpw: fp ?? mid };
-  }, [design, gh, cy, cp, minSpan, radPad, showDims]);
+    return { pw, pp, gw, gp, cl, P, k0, ox0, oy0, fp: fp ? P(fp) : null, fpw: fp ?? mid };
+  }, [design, gh, cy, cp, minSpan, radPad, showDims, caseGeo]);
 
-  const { pw, pp, gw, gp, P, fp, fpw } = scene;
+  const { pw, pp, gw, gp, cl, P, fp, fpw } = scene;
   // zoom/pan on top of the fit: about the view centre, then shifted
   const k = scene.k0 * zv.z, ox = (scene.ox0 - W / 2) * zv.z + W / 2 + zv.x, oy = (scene.oy0 - H / 2) * zv.z + H / 2 + zv.y;
   const S = useCallback((x: number, y: number): P2 => [ox + x * k, oy + y * k], [ox, oy, k]);
@@ -253,6 +262,8 @@ export function Preview({ design, svgRef, type, params }: { design: Design; svgR
       <div className="preview-tools">
         <Select value={view} ariaLabel="View" options={[["3d", "3D (drag to rotate)"], ["top", "Top"], ["front", "Front"], ["side", "Side"]]} onChange={(v) => setView(v)} />
         <button className={showDims ? "on" : ""} aria-pressed={showDims} onClick={() => set({ showDims: !showDims })}>{t("Dimensions")}</button>
+        <button className={showCase ? "on" : ""} aria-pressed={showCase} disabled={!outline || "none" in outline}
+          title={!outline ? undefined : "none" in outline ? t("No case: larger than {0}", fmtLen(MAX_SIZE / 1000, unit)) : undefined} onClick={() => set({ showCase: !showCase })}>{t("Case")}</button>
         <button className={on ? "on" : ""} aria-pressed={on} disabled={!eligible} title={eligible ? undefined : t("No field model for this antenna")} onClick={() => setRadiation((r) => !r)}>{t("Radiation")}</button>
         {on && <button onClick={() => setPlaying((p) => !p)}>{playing ? t("Pause") : t("Play")}</button>}
         <button className={gh ? "on" : ""} aria-pressed={!!gh} onClick={() => setGhost(gh ? null : { type, wires: design.wires, plates: design.plates })}>{gh ? t("Clear compare") : t("Pin for compare")}</button>
@@ -269,6 +280,7 @@ export function Preview({ design, svgRef, type, params }: { design: Design; svgR
           <polygon key={`p${idx}`} points={q.map((x) => S(x[0], x[1]).join(",")).join(" ")} className={`plate plate-${p.material}${litP ? (litP.has(idx) ? " lit" : " faded") : ""}`}
             onPointerMove={(e) => showTip(e, plateLines(p))} onPointerLeave={() => setTip(null)} />
         ))}
+        {cl.map((line, i) => <polyline key={`c${i}`} points={line.map((x) => S(x[0], x[1]).join(",")).join(" ")} className="case-outline" pointerEvents="none" />)}
         {pw.map(({ w, idx, a, b }) => {
           const [x1, y1] = S(a[0], a[1]), [x2, y2] = S(b[0], b[1]);
           const cls = lit ? ((w.tag && lit.has(w.tag)) || litW.has(idx) ? " lit" : " faded") : hover?.fromDrawing && w.tag && hover.tags.includes(w.tag) ? " lit" : "";
