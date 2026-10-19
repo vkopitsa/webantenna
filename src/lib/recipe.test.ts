@@ -96,13 +96,25 @@ describe("bendRecipes", () => {
     }
   });
 
-  it("biquad: both cut ends sit at the feed, so the 7 other vertices are the copper bends", () => {
-    // vertex 0 is where the two wire ends meet (the feed terminal), not a bend in the copper
+  it("biquad: the loop is cut at the feed into two identical halves of 3 bends each", () => {
     const { def, p, d } = build("biquad");
-    const [r] = bendRecipes(def, p, d), bp = bendPaths(d)[0], fb = d.wires.find((w) => w.group === "feed")!.b.map((c) => c * 1000);
-    expect(r.bends).toHaveLength(7);
-    expect(r.path).toHaveLength(8);
-    expect(Math.hypot(...bp.pts[0].map((c, i) => c - fb[i]))).toBeLessThan(1);
+    const rs = bendRecipes(def, p, d);
+    expect(rs).toHaveLength(1);
+    expect(rs[0].qty).toBe(2);
+    expect(rs[0].bends).toHaveLength(3);
+    expect(rs[0].closed).toBe(false);
+    expect(rs[0].path).toHaveLength(5);
+  });
+
+  const FAMILIES: [string, Params][] = [
+    ["biquad", {}], ["biquad", { d: 1.6e-3 }], ["quad", {}], ["moxon", {}], ["jpole", {}], ["yagi", { driven: "folded" }], ["cloverleaf", {}],
+    ["groundplane", {}], ["dipole", { droop: 30 }], ["discone", {}], ["collinear", {}],
+  ];
+  it.each(FAMILIES)("%s %j: the cut agrees with the developed length", (id, extra) => {
+    for (const r of recipes(id, extra)) {
+      expect(r.cut, `${id} ${r.tag}`).toBeGreaterThan(r.length * 0.9);
+      expect(r.cut, `${id} ${r.tag}`).toBeLessThan(r.length * 1.1);
+    }
   });
 
   it("short run is flagged", () => {

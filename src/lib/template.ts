@@ -11,7 +11,7 @@ import { PROBE_CLEAR, PROBE_DRILL } from "./fab";
 import { bendRecipes, type Recipe } from "./recipe";
 
 /** A drawing in mm, origin at its own top-left. */
-interface Drawing { w: number; h: number; prims: Prim[]; caption: string }
+export interface Drawing { w: number; h: number; prims: Prim[]; caption: string }
 
 const MARGIN = 12, TOP = 28, BOTTOM = 280;
 const CW = A4.w - 2 * MARGIN, CH = BOTTOM - TOP;
@@ -115,31 +115,38 @@ const dieText = (r: Recipe) => (r.die ? `die: ${r.die.bolt} bolt` : "no bolt die
 
 /** One 1:1 strip per bent piece: the cut wire laid along it, a red mark at every bend, the flat shape in the corner.
  *  A piece whose strip would need more than 6 A4 tiles gets none (the recipe table has it). */
-function recipeDrawings(rs: Recipe[]): Drawing[] {
+export function recipeDrawings(rs: Recipe[]): Drawing[] {
   const out: Drawing[] = [];
   for (const r of rs) {
     if (!r.bends.length) continue;
-    const L = Math.max(r.cut, r.length) * 1e3, P = 10, H = 56;   // the strip also covers bends the recipe puts beyond the cut length
+    const L = Math.max(r.cut, r.length) * 1e3, P = 10;   // the strip also covers bends the recipe puts beyond the cut length
+    const y0 = 30, oy = 66, PH = 28, H = oy + PH + 8;
     const w = L + 2 * P;
     if (Math.min(tiles(w, H), tiles(H, w)) > 6) continue;
-    const y0 = 22, prims: Prim[] = [];
+    const prims: Prim[] = [];
     // wire at its diameter, cut ticks at both ends
     prims.push({ k: "line", x1: P, y1: y0, x2: P + L, y2: y0, w: Math.max(r.dia * 1e3, 0.3), grey: true });
     for (const x of [P, P + r.cut * 1e3]) prims.push({ k: "line", x1: x, y1: y0 - 5, x2: x, y2: y0 + 5, w: 0.4 });
     prims.push({ k: "text", x: P, y: y0 - 7, s: "cut 0", size: 2.4, grey: true }, { k: "text", x: P + r.cut * 1e3, y: y0 - 7, s: `cut ${dMm(r.cut)} mm`, size: 2.4, grey: true, anchor: "end" });
+    // labels of marks closer than 11 mm go to another level, so they do not overlap
+    const lastX: number[] = [];
     r.bends.forEach((b, i) => {
-      const x = P + b.at * 1e3, dy = (i % 2) * 7;
+      const x = P + b.at * 1e3;
+      let lv = lastX.findIndex((lx) => x - lx >= 11);
+      if (lv < 0) lv = lastX.length < 4 ? lastX.length : lastX.indexOf(Math.min(...lastX));
+      lastX[lv] = x;
+      const dy = lv * 6;
       prims.push({ k: "line", x1: x, y1: y0 - 6, x2: x, y2: y0 + 6, w: 0.5 },
         { k: "text", x, y: y0 - 9 - dy, s: `B${i + 1}`, size: 3, bold: true, anchor: "middle" },
         { k: "text", x, y: y0 + 10 + dy, s: `${dMm(b.at)} mm`, size: 2.4, anchor: "middle" },
         { k: "text", x, y: y0 + 13 + dy, s: `${Math.round(b.angle)}° ${b.dir}${b.short ? " (short)" : ""}`, size: 2.4, bold: true, anchor: "middle" });
     });
-    // the flat shape, small, in the lower left corner
+    // the flat shape, small, below the labels
     const xs = r.path.map((q) => q[0]), ys = r.path.map((q) => q[1]);
     const x1 = Math.min(...xs), y1 = Math.min(...ys), bw = Math.max(...xs) - x1 || 1, bh = Math.max(...ys) - y1 || 1;
-    const sc = Math.min(1, 60 / bw, 28 / bh), oy = y0 + 32;
+    const sc = Math.min(1, 60 / bw, PH / bh);
     const pts = r.path.map((q): [number, number] => [P + (q[0] - x1) * sc, oy + (bh - (q[1] - y1)) * sc]);
-    prims.push({ k: "poly", pts, closed: r.closed, lw: 0.4 }, { k: "text", x: P + bw * sc + 3, y: oy + 3, s: "shape, not to scale", size: 2.2, grey: true });
+    prims.push({ k: "poly", pts, closed: r.closed, lw: 0.4 }, { k: "text", x: P, y: oy + bh * sc + 5, s: "shape, not to scale", size: 2.2, grey: true });
     out.push({ w, h: H, prims, caption: `${r.tag ? r.tag + " " : ""}bend strip, 1:1 - Ø${dMm(r.dia)} mm wire, ${dieText(r)}, qty ${r.qty}` });
   }
   return out;

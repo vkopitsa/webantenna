@@ -22,11 +22,12 @@ const holesOf = (id: string, extra: Params = {}) => {
 const hole = (n: number, cut: number, marks: number[] = [], dia = 0.001): Hole => ({ n, cut, dia, qty: 1, what: msg("Wire"), marks });
 
 describe("boardHoles", () => {
-  it("biquad: one hole for the driven wire with its seven bends marked", () => {
+  it("biquad: one hole for the two driven halves, three bends marked", () => {
     const hs = holesOf("biquad");
     expect(hs).toHaveLength(1);
     expect(hs[0].n).toBe(1);
-    expect(hs[0].marks).toHaveLength(7);
+    expect(hs[0].qty).toBe(2);
+    expect(hs[0].marks).toHaveLength(3);
   });
   it("ground plane at 1.3 GHz: the radials share one hole", () => {
     const hs = holesOf("groundplane", { bands: "1.25e9-1.35e9" });
