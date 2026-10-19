@@ -3,7 +3,7 @@
 // docs/FPV-DETECTOR-ANTENNA.md (tools/wideband-antenna). The shape is fixed (it was optimised as a whole) and scales
 // with the lowest frequency; the Simulation tab shows that study's tabulated sweep, since thin wires cannot model it.
 import type { AntennaDef, Design, ParamDef, Params, Plate, Sheet, Table, Vec3, Wire } from "../types";
-import { str } from "../types";
+import { num, str } from "../types";
 import type { CurrentElement } from "../mom";
 import type { IdealCurrents } from "../idealcurrents";
 import { fmt, wavelength } from "../rf";
@@ -53,6 +53,26 @@ export interface SkyconeTable {
 export const baseWire = (t: SkyconeTable): number => 2 * (t.cage ? t.cage.r : t.short ? t.short.r : 0.5e-3);
 /** Hub ring radius (m) of an n-frame cage of wire Ø dRef: the wires of one hub must fit around the axis. */
 export const hubFor = (n: number, dRef: number): number => Math.max(3e-3, (n * dRef * 1.1) / (2 * Math.PI));
+
+/** Wire diameter (m) a wire cage or S40 gets without a `d` param (old saved designs), the same at every size. */
+const WIRE_D = 1e-3;
+/** A55: the thickest wire (m, reference scale) its coiled shorting wires can be wound from, min(coil Ø / 3,
+ *  0.8 · pitch) with the pitch = the shorting wire's height / turns; Infinity without coils. */
+export function coilLimit(t: SkyconeTable): number {
+  const sh = t.cage?.short;
+  return sh?.turns && sh.coilDia ? Math.min(sh.coilDia / 3, (0.8 * Math.abs(sh.zHot - sh.zGnd)) / sh.turns) : Infinity;
+}
+
+/** The design's wire: dGeo (m, reference scale) for the geometry (the `d` param over the scale s, A55: capped at its
+ *  coil), the table read at it (clamped to the tabulated diameters) and the Design.skyconeWire record. */
+function wireOf(t: SkyconeTable, p: Params, s: number) {
+  const d = num(p, "d", WIRE_D);
+  let dGeo = (d > 0 ? d : WIRE_D) / s;
+  const capped = dGeo > coilLimit(t);
+  if (capped) dGeo = coilLimit(t);
+  const at = tableAt(t, dGeo);
+  return { dGeo, tab: at.t, wire: { dRef: baseWire(at.t), clamped: at.clamped, ...(capped ? { capped } : {}) } };
+}
 
 const wireMemo = new WeakMap<SkyconeTable, Map<number, { t: SkyconeTable; clamped: boolean }>>();
 const mix = (a: number[], b: number[], w: number) => w === 0 ? a : w === 1 ? b : a.map((v, i) => v * (1 - w) + b[i] * w);
@@ -216,13 +236,16 @@ export function skyconeCurrents(defId: string, d: Design): IdealCurrents | null 
   const I = t.cur.i[k], els: CurrentElement[] = [], segs: number[] = [], ir: number[] = [], ii: number[] = [];
   const ring = t.cage?.n ?? RING;                     // a wire cage: on its frames
   const sh = t.cage?.short ?? t.short, single = t.cur.seg.length - (sh?.k ?? 0), shFrame = t.cage?.short?.frame ?? 0;
+  // element radius: the design's own wire (frames, shorting wire); the sheet's surface current as before
+  const rFrame = (t.cage ? d.wires.find((w) => w.tag === "H")?.r : undefined) ?? (t.cage?.r ?? 0.5e-3) * s;
+  const rShort = d.wires.find((w) => w.tag === "S")?.r ?? rFrame;
   t.cur.seg.forEach(([r0, z0, r1, z1], j) => {
     const one = j >= single;                         // a shorting wire: one wire at its own angle
     for (let m = 0; m < (one ? 1 : ring); m++) {
       const ph = (2 * Math.PI * (one ? shFrame : m)) / ring, c = Math.cos(ph), sn = Math.sin(ph);
       const p: Vec3 = [r0 * s * c, r0 * s * sn, z0 * s], q: Vec3 = [r1 * s * c, r1 * s * sn, z1 * s];
       const cr = I[2 * j] / (one ? 1 : ring), ci = I[2 * j + 1] / (one ? 1 : ring);
-      els.push({ dl: [q[0] - p[0], q[1] - p[1], q[2] - p[2]], mid: [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2], cr, ci, r: (t.cage?.r ?? 0.5e-3) * s });
+      els.push({ dl: [q[0] - p[0], q[1] - p[1], q[2] - p[2]], mid: [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2], cr, ci, r: one ? rShort : rFrame });
       segs.push(...p, ...q);
       ir.push(cr); ii.push(ci);
     }
@@ -241,6 +264,7 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
   const bare = bareOf(t, bandsP, fLow);
   const ratio = t.fHi / t.fLo, fTop = fLow * ratio;
   const s = t.fLo / fLow;
+  const wd = t.short ? wireOf(t, bandsP, s) : undefined;
   const segs = segments(t, s);
   const sheets = segs.map(sheetOf);
   const plates: Plate[] = [];
@@ -260,7 +284,7 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
     { a: v(0, 0, 0), b: v(0, 0, g), r: 0.46e-3, group: "feed" },
     { a: v(0, 0, 0), b: v(0, 0, zBot - 5e-3), r: COAX_R, group: "feed" },
   ];
-  const sw = t.short && { a: at(t.short.rho * s, t.short.zHot * s, 0), b: at(t.short.rho * s, t.short.zGnd * s, 0), r: t.short.r * s };
+  const sw = t.short && { a: at(t.short.rho * s, t.short.zHot * s, 0), b: at(t.short.rho * s, t.short.zGnd * s, 0), r: (wd!.dGeo / 2) * s };
   const swLen = sw ? Math.abs(sw.a[2] - sw.b[2]) : 0;
   if (sw) wires.push({ a: sw.a, b: sw.b, r: sw.r, group: "driven", tag: "S" });
   const rim = hot.find((q) => q.kind === "strip"), skirt = gnd.find((q) => q.kind === "strip");
@@ -300,7 +324,7 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
     ],
     tables,
     ...(sw ? { cuts: [{ what: SHORT, qty: 1, length: swLen, dia: 2 * sw.r, note: "Straight: solder it on at the listed distance from the axis" }] } : {}),
-    perf: tablePerf(t, bands, fLow, bare ? "Worst SWR in your bands (precomputed MoM, bare cable)" : "Worst SWR in your bands (precomputed MoM, no cable)", bare?.row),
+    perf: tablePerf(wd?.tab ?? t, bands, fLow, bare ? "Worst SWR in your bands (precomputed MoM, bare cable)" : "Worst SWR in your bands (precomputed MoM, no cable)", bare?.row),
     notes: [
       sw
         ? "The mini wire cage's shape made from brass or copper sheet: Ø39 × 40 mm, hot element (cones, rim, lid) on the coax centre pin, ground cone on the coax jacket, and one straight Ø1 mm shorting wire from the hot cone down to the ground cone. A box this small is below the Chu limit for 960 MHz, so the band starts at 1.4 GHz; the wire works as an inductor across the feed and lifts the low resistance at the bottom of the band to about 50 Ω. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
@@ -319,6 +343,7 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
       "Full study, build steps, tolerances and solver checks: docs/FPV-DETECTOR-ANTENNA.md in the project repository.",
     ],
     coax: bare ? { choke: "none", bare } : { choke: sleeve ? "sleeve" : "bead" },
+    ...(wd ? { skyconeWire: wd.wire } : {}),
     necSupported: false,
     f,
     sweeps: [{ start: fLow, stop: Math.max(fHigh, fLow * 1.5), steps: 101 }],
@@ -331,15 +356,27 @@ type P2 = [number, number];
 
 /** Frame paths (ρ, z) of the cage, as tools/wideband-antenna/wirecage.py builds them: the hot frame from the axis at
  *  the washer height along the washer, cones, rim and lid; the ground frame from the axis at the coax end along the
- *  ground cone and skirt (points inside 2.5 mm are the coax). Then each end on the axis moves out to the hub ring. */
-export function cageFrames(t: SkyconeTable, s: number): { hot: P2[]; ground: P2[]; hubs: [P2, P2][] } {
+ *  ground cone and skirt (points inside 2.5 mm are the coax). Then each end on the axis moves out to the hub ring.
+ *  hub: the hub ring radius (m, reference scale). Above the table's own hub (thick wire) the frames are cut where they
+ *  cross that radius, as the NEC tables do (wirecage.py `_hubbed`, family10.py `hub_cut`), and an open lid whose hole
+ *  is inside it ends on a ring of the hub radius. */
+export function cageFrames(t: SkyconeTable, s: number, hub = t.cage!.hub): { hot: P2[]; ground: P2[]; hubs: [P2, P2][] } {
+  const thick = hub > t.cage!.hub * (1 + 1e-9);
   const push = (out: P2[], q: P2) => { const l = out[out.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) > 1e-5 * s) out.push(q); };
   const hot: P2[] = [[0, t.gap * s]];
   for (const pl of t.upper.length > 1 ? t.upper.slice(1) : t.upper) for (const q of pl) push(hot, [q[0] * s, q[1] * s]);
   if (hot[hot.length - 1][0] < 1.5e-3 * s) hot[hot.length - 1] = [0, hot[hot.length - 1][1]];     // a closed lid ends on the axis
+  else if (thick && hot[hot.length - 1][0] < hub * s) {                                           // an open lid inside the hub ring
+    let k = hot.length - 1;
+    while (k > 0 && hot[k][0] < hub * s) k--;
+    if (hot[k][0] >= hub * s) {
+      const a = hot[k], c = hot[k + 1], w = (a[0] - hub * s) / (a[0] - c[0]);
+      hot.splice(k + 1, hot.length, ...(w > 1e-6 ? [[hub * s, a[1] + w * (c[1] - a[1])] as P2] : []));
+    }
+  }
   const ground: P2[] = [[0, 0]];
   for (const pl of t.lower) for (const q of pl) if (q[0] > 2.5e-3) push(ground, [q[0] * s, q[1] * s]);
-  const R = t.cage!.hub * s, hubs: [P2, P2][] = [];
+  const R = hub * s, hubs: [P2, P2][] = [];
   const hubbed = (path: P2[]): P2[] => {
     let out = path.slice();
     for (const first of [true, false]) {
@@ -348,7 +385,16 @@ export function cageFrames(t: SkyconeTable, s: number): { hot: P2[]; ground: P2[
       const nb = first ? out[1] : out[out.length - 2];
       let ring: P2;
       if (nb[0] > R) { ring = [R, q[1] + (R / nb[0]) * (nb[1] - q[1])]; out[i] = ring; }
-      else { out = first ? out.slice(1) : out.slice(0, -1); ring = first ? out[0] : out[out.length - 1]; }
+      else {
+        // the neighbour (the washer edge) is inside the hub ring: at the table's hub drop the axis point (the ring is on
+        // the washer edge); a thick wire's larger hub cuts the path where it crosses R
+        let seq = first ? out : out.slice().reverse();
+        const k = thick ? seq.findIndex((p, j) => j >= 2 && p[0] > R) : -1;
+        if (k < 0) seq = seq.slice(1);
+        else { const a = seq[k - 1], c = seq[k], w = (R - a[0]) / (c[0] - a[0]); seq = [[R, a[1] + w * (c[1] - a[1])] as P2, ...seq.slice(k)]; }
+        out = first ? seq : seq.reverse();
+        ring = first ? out[0] : out[out.length - 1];
+      }
       hubs.push([[0, q[1]], ring]);
     }
     return out;
@@ -362,8 +408,8 @@ const hoopsOf = (path: P2[], s: number) => path.filter((q) => q[0] >= 4e-3 * s);
 /** Where each of those hoops really sits: against the frames on the outside of the cage (under the hot cones, over the
  *  ground cone, outside the rims, over the lid), its centre one wire diameter D off the frame's centre line. The NEC
  *  model keeps them at the bend points. side 1: hot, -1: ground. */
-const hoopSeats = (path: P2[], s: number, D: number, side: 1 | -1): P2[] => path.flatMap((q, i): P2[] => {
-  if (q[0] < 4e-3 * s) return [];
+const hoopSeats = (path: P2[], s: number, D: number, side: 1 | -1, hubs: [P2, P2][] = []): P2[] => path.flatMap((q, i): P2[] => {
+  if (q[0] < 4e-3 * s || hubs.some((h) => h[1] === q)) return [];     // a thick wire's hub ring at ≥ 4 mm is the washer, no hoop
   const nrm = (a: P2, b: P2): P2 => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]); return [(side * (b[1] - a[1])) / l, (-side * (b[0] - a[0])) / l]; };
   const ns = [...(i > 0 ? [nrm(path[i - 1], q)] : []), ...(i + 1 < path.length ? [nrm(q, path[i + 1])] : [])];
   const [a, b] = ns.length === 2 ? ns : [ns[0], ns[0]];
@@ -429,8 +475,11 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
   const fLow = Math.min(...bands.map((b) => b[0])), fHigh = Math.max(...bands.map((b) => b[1]));
   const bare = bareOf(t, bandsP, fLow);
   const fTop = fLow * (t.fHi / t.fLo), s = t.fLo / fLow;
-  const { n, r: r0, short: sh } = t.cage!, r = r0 * s, g = t.gap * s;
-  const fr = cageFrames(t, s);
+  const { n, short: sh } = t.cage!, g = t.gap * s;
+  const wd = wireOf(t, bandsP, s), r = (wd.dGeo / 2) * s;
+  // the hub ring follows the wire (the tables' hubFor), kept one wire Ø inside a shorting wire
+  const hubR = Math.max(t.cage!.hub, Math.min(hubFor(n, wd.dGeo), sh ? sh.rho - wd.dGeo : Infinity));
+  const fr = cageFrames(t, s, hubR);
   const ang = Array.from({ length: n }, (_, k) => (2 * Math.PI * k) / n);
   const wires: Wire[] = [
     { a: v(0, 0, 0), b: v(0, 0, g), r: 0.46e-3, group: "feed" },                       // pin gap
@@ -444,7 +493,8 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
   for (const { path, wired, group, tag } of sides) {
     ang.forEach((ph, k) => wired.slice(1).forEach((q, i) => wires.push({ a: at(wired[i][0], wired[i][1], ph), b: at(q[0], q[1], ph), r, group, tag: k === 0 && i === 0 ? tag : undefined })));
     const hub = fr.hubs.find((h) => path.some((q) => q === h[1]));
-    for (const q of [...hoopsOf(path, s), ...(hub ? [hub[1]] : [])]) {
+    // a thick wire's hub ring can lie at ≥ 4 mm: one ring there, not a hoop on top of it
+    for (const q of [...hoopsOf(path, s).filter((x) => !fr.hubs.some((h) => h[1] === x)), ...(hub ? [hub[1]] : [])]) {
       const rr = Math.min(r, (2 * q[0] * Math.sin(Math.PI / n)) / 4);
       ang.forEach((ph, k) => wires.push({ a: at(q[0], q[1], ph), b: at(q[0], q[1], ang[(k + 1) % n]), r: rr, group }));
     }
@@ -469,7 +519,7 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
   // physical frames start at the washer edge: drop a stub shorter than 0.5 mm next to the hub ring
   const trim = (p: P2[]) => (p.length > 2 && Math.hypot(p[1][0] - p[0][0], p[1][1] - p[0][1]) < 0.5e-3 * s ? p.slice(1) : p);
   const hotF = trim(fr.hot), gndF = trim(fr.ground);
-  const seats = { hot: hoopSeats(fr.hot, s, 2 * r, 1), ground: hoopSeats(fr.ground, s, 2 * r, -1) };
+  const seats = { hot: hoopSeats(fr.hot, s, 2 * r, 1, fr.hubs), ground: hoopSeats(fr.ground, s, 2 * r, -1, fr.hubs) };
   const hoops = [...seats.hot.map((q) => ({ q, what: "Hoop, hot side" })), ...seats.ground.map((q) => ({ q, what: "Hoop, ground side" }))];
   const hubHot = fr.hubs.find((h) => h[0][1] > 0), hubGnd = fr.hubs.find((h) => h[0][1] <= 0);
   const washerD = 2 * Math.max(hubHot ? hubHot[1][0] : 0, hotF[0][0]);
@@ -534,7 +584,7 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
     ],
     tables,
     perf: [
-      ...tablePerf(t, bands, fLow, bare ? "Worst SWR in your bands (precomputed NEC-2, bare cable)" : "Worst SWR in your bands (precomputed NEC-2, no cable)", bare?.row),
+      ...tablePerf(wd.tab, bands, fLow, bare ? "Worst SWR in your bands (precomputed NEC-2, bare cable)" : "Worst SWR in your bands (precomputed NEC-2, no cable)", bare?.row),
       { label: "Wire frames (hot + ground)", value: `${n} + ${n}` },
     ],
     notes: [
@@ -552,6 +602,7 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
         : mini === "w40"
         ? "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this cage (Ø1 mm wire at 1.4 GHz), scaled to your size."
         : "The shape is fixed (it was optimised as a whole); all dimensions scale with your lowest frequency, the wire diameter too. The Simulation tab shows the precomputed NEC-2 sweep of this cage (Ø1 mm wire at 960 MHz), scaled to your size.",
+      ...(wd.wire.capped ? ["The coiled shorting wires can't be wound from wire this thick: the wire diameter is capped at what fits the coil."] : []),
       "Feed through UT-141 (RG-402) semi-rigid coax: the hot frames are soldered round a washer on the centre pin (keep the listed gap above the coax end), the ground frames round a collar on the coax jacket.",
       ...(sh ? ["The shorting wire is a DC short across the coax. That is fine for a receiver, but switch off any antenna power (bias-tee) on the receiver input, or put a DC block in the line."] : []),
       ...(mini === "a55" ? ["Capacitors (C0G ceramic, 0402 or 0603, in series): 2.2 pF in the centre pin between the coax and the hot washer, ±5 % or better (±10 % puts the worst SWR at 2.06), and 3.6 pF at the ground end of the second shorting wire (±10 % is fine). Wind both coils to the count: a quarter turn more raises the worst SWR to 2.2, a quarter turn less changes nothing."] : []),
@@ -570,6 +621,7 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
       : mini === "a55" ? { choke: "tube", tubes: [{ d: 20e-3 * s, len: 70e-3 * s }, { d: 20e-3 * s, len: 50e-3 * s }] }
       : mini === "b44" ? { choke: "tube", tubes: [{ d: 10e-3 * s, len: 50e-3 * s }] }
       : { choke: "sleeve" },
+    skyconeWire: wd.wire,
     necSupported: true,
     f,
     sweeps: [{ start: fLow, stop: Math.max(fHigh, fLow * 1.5), steps: 101 }],
@@ -578,8 +630,11 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
 
 const BANDS_P = { ...BANDS, label: "Frequency bands (all must fit in the range)" };
 const PARAMS = [BANDS_P, COAX_FERRITE];
-const PARAMS_TUBE = [BANDS_P, COAX_TUBE];
-const PARAMS_TUBES = [BANDS_P, COAX_TUBES];
+const WIRE_P: ParamDef = { key: "d", label: "Wire diameter", kind: "length", min: 0.2e-3, max: 5e-3 };
+const PARAMS_CAGE = [BANDS_P, WIRE_P, COAX_FERRITE];
+const PARAMS_CAGE_TUBE = [BANDS_P, WIRE_P, COAX_TUBE];
+const PARAMS_CAGE_TUBES = [BANDS_P, WIRE_P, COAX_TUBES];
+const PARAMS_SHORT = [BANDS_P, { ...WIRE_P, label: "Shorting wire diameter" }, COAX_FERRITE];
 
 export const skycone7: AntennaDef = {
   id: "skycone7",
@@ -628,8 +683,8 @@ export const skyconecage: AntennaDef = {
   summary: "The compact bicone bent from Ø1 mm wire instead of sheet: 16 frames per side and a few hoops, 960 MHz–6.4 GHz at Ø72 × 75 mm, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
   multiband: "broadband",
   maxRatio: SKYCONE_W16.fHi / SKYCONE_W16.fLo,
-  params: PARAMS,
-  defaults: { bands: "960e6-6400e6", coax: "ferrite" },
+  params: PARAMS_CAGE,
+  defaults: { bands: "960e6-6400e6", d: 1e-3, coax: "ferrite" },
   build: (p) => buildCage(SKYCONE_W16, p),
 };
 
@@ -641,8 +696,8 @@ export const skyconecagemini: AntennaDef = {
   summary: "The wire cage made smaller by one shorting wire from a hot frame to the ground frame: 960 MHz–6.4 GHz at Ø65 × 65 mm, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
   multiband: "broadband",
   maxRatio: SKYCONE_W65.fHi / SKYCONE_W65.fLo,
-  params: PARAMS,
-  defaults: { bands: "960e6-6400e6", coax: "ferrite" },
+  params: PARAMS_CAGE,
+  defaults: { bands: "960e6-6400e6", d: 1e-3, coax: "ferrite" },
   build: (p) => buildCage(SKYCONE_W65, p),
 };
 
@@ -654,8 +709,8 @@ export const skyconecage40: AntennaDef = {
   summary: "The small wire cage shrunk to Ø39 × 40 mm (16 frames per side, one shorting wire). A box this small fits a sphere of radius 28 mm, below the Chu limit for 960 MHz, so the band starts at 1.4 GHz: 1.4–6.4 GHz at SWR ≤ 2.1, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
   multiband: "broadband",
   maxRatio: SKYCONE_W40.fHi / SKYCONE_W40.fLo,
-  params: PARAMS,
-  defaults: { bands: "1400e6-6400e6", coax: "ferrite" },
+  params: PARAMS_CAGE,
+  defaults: { bands: "1400e6-6400e6", d: 1e-3, coax: "ferrite" },
   build: (p) => buildCage(SKYCONE_W40, p, "w40"),
 };
 
@@ -667,8 +722,8 @@ export const skycone40: AntennaDef = {
   summary: "The mini wire cage's Ø39 × 40 mm shape cut from brass or copper sheet instead of bent wire, with one shorting wire between the cones: 1.4–6.4 GHz at SWR ≤ 2, beam tilted up. Needs a ferrite sleeve (6 beads) on the coax.",
   multiband: "broadband",
   maxRatio: SKYCONE_S40.fHi / SKYCONE_S40.fLo,
-  params: PARAMS,
-  defaults: { bands: "1400e6-6400e6", coax: "ferrite" },
+  params: PARAMS_SHORT,
+  defaults: { bands: "1400e6-6400e6", d: 1e-3, coax: "ferrite" },
   build: (p) => build(SKYCONE_S40, p, true),
 };
 
@@ -680,8 +735,8 @@ export const skyconecage44: AntennaDef = {
   summary: "The mini wire cage one size up, re-tuned for 1.36–7 GHz: Ø43 × 44 mm, 16 frames per side, one shorting wire, SWR ≤ 1.75, beam tilted up. No ferrite: a Ø10 × 50 mm choke sleeve on the coax keeps the cable out of the match.",
   multiband: "broadband",
   maxRatio: SKYCONE_B44.fHi / SKYCONE_B44.fLo,
-  params: PARAMS_TUBE,
-  defaults: { bands: "1360e6-7000e6", coax: "choke" },
+  params: PARAMS_CAGE_TUBE,
+  defaults: { bands: "1360e6-7000e6", d: 1e-3, coax: "choke" },
   build: (p) => buildCage(SKYCONE_B44, p, "b44"),
 };
 
@@ -693,8 +748,8 @@ export const skyconecage55: AntennaDef = {
   summary: "The low-band half of the two-antenna set: Ø51 × 54 mm for 960 MHz–1.36 GHz, 16 frames per side, two coiled shorting wires, two small capacitors (double-tuned match), SWR ≤ 1.9, beam tilted up. No ferrite: two choke-sleeve tubes on the coax.",
   multiband: "broadband",
   maxRatio: SKYCONE_A55.fHi / SKYCONE_A55.fLo,
-  params: PARAMS_TUBES,
-  defaults: { bands: "960e6-1360e6", coax: "choke" },
+  params: PARAMS_CAGE_TUBES,
+  defaults: { bands: "960e6-1360e6", d: 1e-3, coax: "choke" },
   build: (p) => buildCage(SKYCONE_A55, p, "a55"),
 };
 

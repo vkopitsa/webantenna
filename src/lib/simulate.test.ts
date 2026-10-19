@@ -129,3 +129,26 @@ describe("sweepBreaks", () => {
     expect(sweepBreaks([1e9, 2e9], d.sweeps)).toEqual([]);
   });
 });
+
+describe("sky-cone wire diameter", () => {
+  const CLAMP = "Your wire is thinner or thicker (for this size) than the precomputed diameters: the Simulation uses the nearest one.";
+  const DETUNE = "The shape was optimised for Ø1 mm wire at its reference size; other wire shifts the match. The Simulation shows that wire on the same shape (not re-optimised).";
+  const sim = (id: string, d: number) => {
+    const def = ANTENNA_BY_ID[id], p = { ...def.defaults, d };
+    return simulate(def, p, def.build(p));
+  };
+  it("cage Ø changes the Simulation", () => {
+    const a = sim("skyconecage", 0.5e-3), b = sim("skyconecage", 2e-3), c = sim("skyconecage", 1e-3);
+    expect(a.z.length).toBe(b.z.length);
+    expect(Math.max(...a.z.map((q, i) => Math.hypot(q.r - b.z[i].r, q.x - b.z[i].x)))).toBeGreaterThan(1);
+    expect(a.notes).toContain(DETUNE);
+    expect(b.notes).toContain(DETUNE);
+    expect(c.notes).not.toContain(DETUNE);
+    expect(c.notes).not.toContain(CLAMP);
+    expect(c.notes.some((n) => n.includes("precomputed NEC-2 sweeps of this cage at several wire diameters"))).toBe(true);
+  });
+  it("cage Ø outside the tables is noted", () => {
+    expect(sim("skyconecage", 5e-3).notes).toContain(CLAMP);
+    expect(sim("skyconecage", 0.8e-3).notes).not.toContain(CLAMP);
+  });
+});

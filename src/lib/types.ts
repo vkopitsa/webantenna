@@ -105,6 +105,10 @@ export interface Design {
    *  tubes of diameter d and length len in metres, or nothing) and, with nothing, the bare-cable row of the table that
    *  the Simulation uses and that cable's length (m) at this size. */
   coax?: { choke: "bead" | "sleeve" | "tube" | "none"; tubes?: { d: number; len: number }[]; bare?: { row: number; len: number } };
+  /** Wire cages and S40: the wire diameter (m, at the table's reference scale) the Simulation reads the table at,
+   *  clamped: the wire is outside the tabulated diameters (the nearest one is used); capped: A55's wire was reduced to
+   *  what fits its coil. */
+  skyconeWire?: { dRef: number; clamped: boolean; capped?: boolean };
   /** false when a wire model would be meaningless (patch, coaxial collinear). */
   necSupported: boolean;
   /** Natural feed impedance the design is meant for (balun / transformer to 50 Ω assumed), default 50 Ω. */

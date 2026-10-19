@@ -9,7 +9,7 @@ import { axialRatio, cpResponse, cpSetup } from "./antennas/cppatch";
 import { arrayLayout } from "./antennas/arraylayout";
 import { arBoresight, arrayMetrics, netSolve } from "./antennas/arraymodel";
 import { loopModel, loopTraceW, loopZin } from "./antennas/pcbloop";
-import { SKYCONE_TABLES, skyconeGain, skyconeZ } from "./antennas/skycone";
+import { SKYCONE_TABLES, skyconeGain, skyconeZ, tableAt } from "./antennas/skycone";
 import { centre, formatBands, type Band } from "./bands";
 import { num } from "./types";
 import { wavelength } from "./rf";
@@ -150,8 +150,9 @@ function evaluate(def: AntennaDef, p: Params, o: SynthOptions, withGain: boolean
     const swr = o.bands.map((b) => Math.max(...pts(b).map((f) => { const [r, x] = loopZin(f, m, d.f); return swrOf(r, x, 50); })));
     return { swr, gain: 1.76 + 10 * Math.log10(Math.max(m.eff, 1e-6)), size: sizeOf(d, lamLow), z0: 50 };
   }
-  const tab = SKYCONE_TABLES[def.id];
-  if (tab) {
+  const tab0 = SKYCONE_TABLES[def.id];
+  if (tab0) {
+    const tab = d.skyconeWire ? tableAt(tab0, d.skyconeWire.dRef).t : tab0;   // wire cages and S40: at the design's wire
     // sky-tilted bicones: their precomputed sweep (every row inside the band); a frequency past it counts as no match
     const fLow = d.sweeps[0].start, bare = d.coax?.bare?.row;
     const at = (b: Band) => [...pts(b), ...tab.f.map((u) => u * fLow).filter((f) => f > b[0] && f < b[1])];

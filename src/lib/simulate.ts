@@ -9,7 +9,7 @@ import { arBoresight, arrayMetrics, arrayScan, netSolve } from "./antennas/array
 import { arrayLayout } from "./antennas/arraylayout";
 import { pcoMetrics, pcoSetup } from "./antennas/pcbcollinear";
 import { loopModel, loopTraceW, loopZin } from "./antennas/pcbloop";
-import { SKYCONE_TABLES, skyconeGain, skyconeRange, skyconeZ } from "./antennas/skycone";
+import { SKYCONE_TABLES, baseWire, skyconeGain, skyconeRange, skyconeZ, tableAt } from "./antennas/skycone";
 import { num } from "./types";
 import { C0, wavelength } from "./rf";
 import { centre, parseBands } from "./bands";
@@ -279,9 +279,18 @@ const SKYCONE_OUT = "Your bands go above the top of this shape's precomputed swe
 
 const SKYCONE_BARE = "Bare coax: the impedance includes the cable's outside as part of the antenna (precomputed with a straight cable of the length in Dimensions, no ferrite). The pattern is the free-space one without a cable.";
 
-/** Sky-tilted bicones: the study's body-of-revolution MoM sweep, scaled to the design's lowest frequency. */
+const SKYCONE_WIRE_CLAMP = "Your wire is thinner or thicker (for this size) than the precomputed diameters: the Simulation uses the nearest one.";
+
+const SKYCONE_WIRE_DETUNE = "The shape was optimised for Ø1 mm wire at its reference size; other wire shifts the match. The Simulation shows that wire on the same shape (not re-optimised).";
+
+const SKYCONE_CAGE = "Sky-tilted bicone, wire cage: precomputed NEC-2 sweeps of this cage at several wire diameters (free space, no cable), scaled to your size. The built-in solver's segment limit is too coarse for this much wire at the top of the band.";
+
+/** Sky-tilted bicones: the study's body-of-revolution MoM sweep, scaled to the design's lowest frequency; wire cages
+ *  and S40 read at the design's wire diameter. */
 function skyconeSim(defId: string, d: Design, fPat: number): SimResult {
-  const t = SKYCONE_TABLES[defId], s = d.sweeps[0];
+  const t0 = SKYCONE_TABLES[defId], s = d.sweeps[0], w = d.skyconeWire;
+  const t = w ? tableAt(t0, w.dRef).t : t0;
+  const wireNotes = w ? [...(w.clamped ? [SKYCONE_WIRE_CLAMP] : []), ...(Math.abs(w.dRef - baseWire(t0)) > 1e-6 * baseWire(t0) ? [SKYCONE_WIRE_DETUNE] : [])] : [];
   const [lo, hi] = skyconeRange(t, s.start);
   const z: ZPoint[] = [];
   // every table row inside the sweep (log-spaced, about 25 per octave), plus the sweep ends
@@ -292,8 +301,8 @@ function skyconeSim(defId: string, d: Design, fPat: number): SimResult {
   const g = skyconeGain(t, s.start, fp);
   return {
     method: "analytic", z, pattern: samplePattern(fp, (th) => g(th)),
-    notes: [...(s.stop > hi * 1.001 ? [SKYCONE_OUT] : []), ...(bare != null ? [SKYCONE_BARE] : []), t.cage
-      ? "Sky-tilted bicone, wire cage: precomputed NEC-2 sweep of this cage (free space, no cable), scaled to your size. The built-in solver's segment limit is too coarse for this much wire at the top of the band."
+    notes: [...(s.stop > hi * 1.001 ? [SKYCONE_OUT] : []), ...(bare != null ? [SKYCONE_BARE] : []), ...wireNotes, t.cage
+      ? SKYCONE_CAGE
       : t.short
       ? "Sky-tilted bicone, sheet metal with a shorting wire: precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the wire; free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones."
       : "Sky-tilted bicone: precomputed body-of-revolution MoM sweep of this shape (solid sheet metal, free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones."],
@@ -402,7 +411,10 @@ export const SIM_STRINGS = [
   "Sky-tilted bicone: precomputed body-of-revolution MoM sweep of this shape (solid sheet metal, free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones.",
   SKYCONE_OUT,
   SKYCONE_BARE,
-  "Sky-tilted bicone, wire cage: precomputed NEC-2 sweep of this cage (free space, no cable), scaled to your size. The built-in solver's segment limit is too coarse for this much wire at the top of the band.",  "Sky-tilted bicone, sheet metal with a shorting wire: precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the wire; free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones.",
+  SKYCONE_WIRE_CLAMP,
+  SKYCONE_WIRE_DETUNE,
+  SKYCONE_CAGE,
+  "Sky-tilted bicone, sheet metal with a shorting wire: precomputed NEC-2 sweep of this antenna (the sheet as a fine wire grid, plus the wire; free space, no cable), scaled to your size. The thin-wire solver cannot model solid cones.",
 ];
 
 /** Impedance at frequency f, linearly interpolated between samples (null outside the sweep). */

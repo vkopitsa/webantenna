@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ANTENNA_BY_ID } from "./index";
 import { SKYCONE_8, SKYCONE_W16, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
-import { SKYCONE_TABLES, baseWire, hubFor, skyconeCurrents, skyconeGain, skyconeZ, tableAt } from "./skycone";
+import { SKYCONE_TABLES, baseWire, cageFrames, coilLimit, hubFor, skyconeCurrents, skyconeGain, skyconeZ, tableAt } from "./skycone";
 import { buildPack } from "../build";
 import { radiationEligible, s11, simulate } from "../simulate";
 import { partsFor } from "../print";
@@ -140,9 +140,10 @@ describe("sky-tilted capped bicones", () => {
     const r = simulate(def, p, d);
     expect(r.notes.some((n) => n.includes("sheet metal with a shorting wire"))).toBe(true);
     expect(Math.max(...r.z.filter((q) => q.f >= 1.4e9 && q.f <= 6.4e9).map((q) => s11(q, 50).swr))).toBeLessThan(2.0);
-    // half the size at 2.8 GHz: the wire scales too
-    const h = def.build({ bands: "2800e6-12800e6" }).wires.find((w) => w.tag === "S")!;
+    // half the size at 2.8 GHz: the wire Ø is a param now (absolute); half of it is the reference wire again
+    const hd = def.build({ bands: "2800e6-12800e6", d: 0.5e-3 }), h = hd.wires.find((w) => w.tag === "S")!;
     expect(h.r).toBeCloseTo(sh[0].r / 2, 9);
+    expect(hd.skyconeWire!.dRef).toBe(1e-3);
     const pack = buildPack(def, def.defaults);
     expect(pack.steps.some((x) => x.s.startsWith("Last, with the hot element on the centre pin"))).toBe(true);
     expect(pack.bom.some((x) => x.item.s.startsWith("Brass or copper sheet"))).toBe(true);
@@ -380,5 +381,98 @@ describe("wire diameter tables", () => {
       if (t.cage) expect(tableAt(t, w.d).t.cage!.hub, id).toBeCloseTo(hubFor(16, w.d), 9);
     }
     expect(hubFor(16, 1e-3)).toBeCloseTo(3e-3, 12);
+  });
+});
+
+describe("wire diameter param", () => {
+  const IDS = ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55", "skycone40"];
+  const hubRadii = (d: ReturnType<typeof ANTENNA_BY_ID.skyconecage.build>) => d.wires
+    .filter((w) => !w.drawOnly && Math.hypot(w.a[0], w.a[1]) < 1e-12 && Math.hypot(w.b[0], w.b[1]) > 1e-9)
+    .map((w) => Math.hypot(w.b[0], w.b[1]));
+
+  it("default Ø1 mm at the reference band is the old design", () => {
+    for (const id of IDS) {
+      const def = ANTENNA_BY_ID[id], d = def.build({ bands: def.defaults.bands });
+      expect(def.params.find((p) => p.key === "d"), id).toMatchObject({ kind: "length", min: 0.2e-3, max: 5e-3, label: id === "skycone40" ? "Shorting wire diameter" : "Wire diameter" });
+      expect(def.defaults.d, id).toBe(1e-3);
+      expect(d.skyconeWire, id).toMatchObject({ dRef: 1e-3, clamped: false });
+    }
+  });
+
+  it("thicker wire: BOM, Dimensions and hub follow", () => {
+    const d = ANTENNA_BY_ID.skyconecage.build({ bands: "960e6-6400e6", d: 2e-3 });
+    const frames = d.cuts!.filter((c) => c.what.includes("frame"));
+    expect(frames.length).toBe(2);
+    for (const c of frames) expect(c.dia).toBeCloseTo(2e-3, 12);
+    expect(d.dims.find((x) => x.label === "Wire diameter")!.value).toBeCloseTo(2e-3, 12);
+    const hubs = hubRadii(d);
+    expect(hubs.length).toBeGreaterThan(0);
+    for (const h of hubs) expect(h * 1e3).toBeCloseTo(hubFor(16, 2e-3) * 1e3, 2);
+    expect(hubFor(16, 2e-3) * 1e3).toBeCloseTo(5.60, 2);
+    expect(d.skyconeWire).toMatchObject({ dRef: 1.5e-3, clamped: true });
+  });
+
+  it("the hub ring of a thick wire sits where the frame crosses its radius (the NEC tables' hub cut)", () => {
+    const t = SKYCONE_TABLES.skyconecage, R = hubFor(16, 1.5e-3);
+    const fr = cageFrames(t, 1, R);
+    for (const [, ring] of fr.hubs) expect(ring[0]).toBeCloseTo(R, 12);
+    expect(fr.hot[0][0]).toBeCloseTo(R, 12);
+    expect(fr.ground[0][0]).toBeCloseTo(R, 12);
+    // the base hub: exactly the old frames
+    expect(cageFrames(t, 1)).toEqual(cageFrames(t, 1, t.cage!.hub));
+    // a hub ring at ≥ 4 mm is one ring, not a hoop on top of it (no coincident wires in the NEC export)
+    const d = ANTENNA_BY_ID.skyconecage.build({ bands: "960e6-6400e6", d: 1.5e-3 });
+    const keys = d.wires.map((w) => [...w.a, ...w.b].map((x) => x.toFixed(9)).join());
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(d.frames!.hoops.hot.every((q) => q[0] > R + 1e-4)).toBe(true);
+  });
+
+  it("S40: the shorting wire Ø changes, the sheet doesn't", () => {
+    const def = ANTENNA_BY_ID.skycone40, a = def.build({ bands: "1400e6-6400e6" }), b = def.build({ bands: "1400e6-6400e6", d: 0.5e-3 });
+    expect(b.wires.find((w) => w.tag === "S")!.r).toBeCloseTo(0.25e-3, 12);
+    expect(b.sheets).toEqual(a.sheets);
+    expect(b.skyconeWire).toMatchObject({ dRef: 0.5e-3, clamped: false });
+  });
+
+  it("A55 caps the wire at the coil", () => {
+    const t = SKYCONE_TABLES.skyconecage55;
+    expect(coilLimit(t)).toBeCloseTo(1.21e-3, 4);
+    expect(Math.abs(coilLimit(t) - 1.21e-3)).toBeLessThan(0.02e-3);
+    const d = ANTENNA_BY_ID.skyconecage55.build({ bands: "960e6-1360e6", d: 3e-3 });
+    expect(d.skyconeWire!.capped).toBe(true);
+    expect(d.skyconeWire!.clamped).toBe(true);
+    expect(d.cuts!.find((c) => c.what.startsWith("Shorting wire"))!.dia).toBeLessThanOrEqual(coilLimit(t) + 1e-12);
+    expect(d.notes).toContain("The coiled shorting wires can't be wound from wire this thick: the wire diameter is capped at what fits the coil.");
+    expect(ANTENNA_BY_ID.skyconecage55.build({ bands: "960e6-1360e6" }).skyconeWire!.capped).toBeFalsy();
+  });
+
+  it("an old saved design without d still builds", () => {
+    for (const id of IDS) {
+      const def = ANTENNA_BY_ID[id];
+      const d = def.build({ bands: String(def.defaults.bands), coax: String(def.defaults.coax) });
+      expect(d.skyconeWire!.dRef, id).toBe(1e-3);
+    }
+    expect(ANTENNA_BY_ID.skyconecage.build({ bands: "960e6-6400e6", coax: "ferrite" }).skyconeWire!.dRef).toBe(1e-3);
+  });
+
+  it("a cage moved far up the band clamps but builds", () => {
+    for (const id of IDS) {
+      const d = ANTENNA_BY_ID[id].build({ bands: "5e9-33e9", d: 1e-3 });
+      expect(d.skyconeWire!.clamped, id).toBe(true);
+      for (const w of d.wires) expect([...w.a, ...w.b, w.r].every(Number.isFinite), id).toBe(true);
+    }
+  });
+
+  it("a thick wire on a cage with a shorting wire keeps the hub inside it", () => {
+    for (const id of ["skyconecagemini", "skyconecage40", "skyconecage44"]) {
+      const t = SKYCONE_TABLES[id], d = ANTENNA_BY_ID[id].build({ bands: ANTENNA_BY_ID[id].defaults.bands, d: 2e-3 });
+      for (const h of hubRadii(d)) expect(h, id).toBeLessThanOrEqual(t.cage!.short!.rho - 2e-3 + 1e-12);
+    }
+  });
+
+  it("Radiation view: the elements carry the design's wire radius", () => {
+    const d = ANTENNA_BY_ID.skyconecage.build({ bands: "960e6-6400e6", d: 2e-3 });
+    const c = skyconeCurrents("skyconecage", d)!;
+    expect(c.els.every((e) => Math.abs(e.r - 1e-3) < 1e-12)).toBe(true);
   });
 });

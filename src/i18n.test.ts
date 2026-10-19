@@ -38,6 +38,7 @@ const VARIANTS: Record<string, Params[]> = {
   skycone7: [{ coax: "bare2" }],
   skyconecage: [{ coax: "bare3" }],
   skyconecage44: [{ coax: "bare1" }],
+  skyconecage55: [{ d: 3e-3 }],
 };
 
 /** Every English string the lib can show (labels, notes, word-only values). */

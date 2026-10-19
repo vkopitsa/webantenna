@@ -27,4 +27,11 @@ describe("synthesis", () => {
     const r = synthesize({ ...base, bands: [[70e6, 9.4e9]], pol: "vertical", pattern: "omni" });
     for (const id of ["skycone21", "skyconecage55", "discone"]) expect(r.find((c) => c.id === id)?.swr[0]).toBe(99);
   }, 240000);
+  it("a synthesis element diameter far outside a cage's tables still scores it", () => {
+    const r = synthesize({ ...base, d: 12e-3, bands: [[960e6, 6400e6]], pol: "vertical", pattern: "omni" });
+    const c = r.find((x) => x.id === "skyconecage");
+    expect(c).toBeTruthy();
+    expect(c!.swr.length).toBeGreaterThan(0);
+    expect(c!.swr.every(Number.isFinite)).toBe(true);
+  }, 240000);
 });
