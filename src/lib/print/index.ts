@@ -1,6 +1,7 @@
 import type { ManifoldToplevel } from "manifold-3d";
 import { cleanup } from "manifold-3d/lib/garbage-collector.js";
-import type { Design, Params } from "../types";
+import type { AntennaDef, Design, Params } from "../types";
+import { ANTENNA_BY_ID } from "../antennas";
 import type { BuiltPart, PartSpec } from "./parts";
 import { buildPart, PART_STRINGS } from "./parts";
 import { CENTRE_HOWTO, CENTRE_STRINGS, FAN_HOWTO, FAN_STRINGS, dipoleParts, fanParts } from "./families/centre";
@@ -12,25 +13,26 @@ import { STANDOFF_HOWTO, STANDOFF_STRINGS, biquadParts } from "./families/stando
 import { SPACER_HOWTO, SPACER_STRINGS, collinearParts, jpoleParts } from "./families/spacer";
 import { SKYCONE_HOWTO, SKYCONE_STRINGS, SKYCONE_TPL, skyconeParts } from "./families/skycone";
 import { BEND_HOWTO, BEND_STRINGS, bendParts, coilParts } from "./families/bend";
+import { CUTBEND_HOWTO, CUTBEND_STRINGS, cutBendParts } from "./families/cutbend";
 import { SHELL_HOWTO, SHELL_STRINGS, shellFor } from "./shells";
 import { en } from "../build";
 
 export { buildPart, USE_LABELS, type BuiltPart, type PartSpec, type Segment } from "./parts";
 
-const FAMILIES: Record<string, (p: Params, d: Design) => PartSpec[]> = {
-  dipole: (_p, d) => dipoleParts(d),
-  fandipole: (_p, d) => fanParts(d),
-  groundplane: (_p, d) => groundPlaneParts(d),
-  yagi: (p, d) => [...yagiParts(p, d), ...bendParts(d)],
+const FAMILIES: Record<string, (p: Params, d: Design, def: AntennaDef) => PartSpec[]> = {
+  dipole: (p, d, def) => [...dipoleParts(d), ...cutBendParts(def, p, d)],
+  fandipole: (p, d, def) => [...fanParts(d), ...cutBendParts(def, p, d)],
+  groundplane: (p, d, def) => [...groundPlaneParts(d), ...cutBendParts(def, p, d)],
+  yagi: (p, d, def) => [...yagiParts(p, d), ...bendParts(d), ...cutBendParts(def, p, d)],
   helix: (_p, d) => helixParts(d),
-  discone: disconeParts,
-  moxon: (p, d) => [...moxonParts(p, d), ...bendParts(d)],
-  quad: (p, d) => [...quadParts(p, d), ...bendParts(d)],
-  biquad: (_p, d) => [...biquadParts(d), ...bendParts(d)],
-  cloverleaf: (_p, d) => bendParts(d),
-  spring: (_p, d) => coilParts(d),
-  jpole: (_p, d) => jpoleParts(d),
-  collinear: collinearParts,
+  discone: (p, d, def) => [...disconeParts(p, d), ...cutBendParts(def, p, d)],
+  moxon: (p, d, def) => [...moxonParts(p, d), ...bendParts(d), ...cutBendParts(def, p, d)],
+  quad: (p, d, def) => [...quadParts(p, d), ...bendParts(d), ...cutBendParts(def, p, d)],
+  biquad: (p, d, def) => [...biquadParts(d), ...bendParts(d), ...cutBendParts(def, p, d)],
+  cloverleaf: (p, d, def) => [...bendParts(d), ...cutBendParts(def, p, d)],
+  spring: (p, d, def) => [...coilParts(d), ...cutBendParts(def, p, d)],
+  jpole: (p, d, def) => [...jpoleParts(d), ...cutBendParts(def, p, d)],
+  collinear: (p, d, def) => [...collinearParts(p, d), ...cutBendParts(def, p, d)],
   skycone7: (_p, d) => skyconeParts(d, 0.3, d.coax?.choke !== "none"),
   skyconecage: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
   skyconecagemini: (_p, d) => skyconeParts(d, 0, d.coax?.choke !== "none"),
@@ -45,7 +47,8 @@ const FAMILIES: Record<string, (p: Params, d: Design) => PartSpec[]> = {
 /** Printable parts for an antenna design (the family's parts plus its shell); empty when the type has none (yet).
  *  Cheap: nothing is built here. */
 export const partsFor = (defId: string, p: Params, d: Design): PartSpec[] => {
-  const family = FAMILIES[defId]?.(p, d) ?? [];
+  const def = ANTENNA_BY_ID[defId];
+  const family = (def && FAMILIES[defId]?.(p, d, def)) ?? [];
   // printed antennas get the PCB enclosure: every one has a board model except the PCB loop (drawn as plates only);
   // a stacked build (pagoda) is round and gets a radome like the cloverleaf
   if (family.some((s) => s.id === "shell")) return family;          // the family brings its own (simulated) cover
@@ -64,6 +67,7 @@ export const PRINT_STRINGS = [
   ...Object.values(CENTRE_HOWTO).flat(), ...HUB_HOWTO, ...Object.values(BOOM_HOWTO).flat(), ...FORMER_HOWTO, ...DISCONE_HOWTO, ...Object.values(SPREADER_HOWTO).flat(), ...STANDOFF_HOWTO, ...Object.values(SPACER_HOWTO).flat(), ...Object.values(FAN_HOWTO).flat(),
   ...SHELL_STRINGS, ...Object.values(SHELL_HOWTO).flat(),
   ...BEND_STRINGS, ...Object.values(BEND_HOWTO).flat(),
+  ...CUTBEND_STRINGS, ...Object.values(CUTBEND_HOWTO).flat(),
   ...SKYCONE_STRINGS, ...Object.values(SKYCONE_TPL), ...Object.values(SKYCONE_HOWTO).flat(),
 ];
 

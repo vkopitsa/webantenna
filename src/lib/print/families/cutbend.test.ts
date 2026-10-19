@@ -6,8 +6,9 @@ import { buildPart, msg } from "../parts";
 import { CLEAR, MAX_SIZE, WALL } from "../rules";
 import { ANTENNA_BY_ID } from "../../antennas";
 import { buildPack } from "../../build";
-import { bendRecipes } from "../../recipe";
-import { boardHoles, cutBoards, CUTBEND_HOWTO, CUTBEND_STRINGS, type Hole } from "./cutbend";
+import { bendRecipes, dieFor } from "../../recipe";
+import { benderGeometry, benderLever, benderPlate, boardHoles, cutBendParts, cutBoards, CUTBEND_HOWTO, CUTBEND_STRINGS, leverSolids, type Hole } from "./cutbend";
+import { partsFor } from "..";
 import { along, ball, inside, setup } from "./testkit";
 
 let M: ManifoldToplevel;
@@ -72,5 +73,77 @@ describe("cut board", () => {
   it("describes every hole in the how-to", () => {
     expect(spec.howTo.some((m) => m.s === CUTBEND_STRINGS.find((s) => s.startsWith("Hole {0}")))).toBe(true);
     expect(CUTBEND_HOWTO.board.length).toBeGreaterThan(0);
+  });
+});
+
+describe("benders", () => {
+  it("geometry: stops at each distinct angle plus 90° on a 40 mm circle, roller beside the wire", () => {
+    const die = dieFor(2)!, g = benderGeometry(die, 2, [90, 45, 90.1]);
+    expect(g.stops.map((s) => s.angle)).toEqual([45, 90]);
+    for (const s of g.stops) {
+      expect(Math.hypot(...s.c)).toBeCloseTo(40, 2);
+      expect((Math.atan2(s.c[1], s.c[0]) * 180) / Math.PI).toBeCloseTo(s.angle, 6);
+    }
+    expect(Math.hypot(...g.roller)).toBeCloseTo(die.r + 2 + CLEAR + die.r, 6);
+    expect(g.tangentX).toBe(0);
+    expect(benderGeometry(die, 2, [135]).stops.map((s) => s.angle)).toEqual([90, 135]);
+  });
+  it("lever bender: wire clears between die and roller and through the block", () => {
+    for (const dMm of [0.5, 2]) {
+      const g = benderGeometry(dieFor(dMm)!, dMm, [90]), { base, lever, wireZ } = leverSolids(M, g), yw = -(g.die.r + dMm / 2);
+      const b = ball(M, [0, yw, wireZ], 0.8 * dMm);
+      expect(inside(base, b), `base d=${dMm}`).toBeLessThan(1e-6);
+      expect(inside(lever, b), `lever d=${dMm}`).toBeLessThan(1e-6);
+      expect(inside(base, along(M, [-60, yw, wireZ], [1, 0, 0], 0, 55, 0.8 * dMm)), `groove d=${dMm}`).toBeLessThan(1e-6);
+      const solid = ball(M, [-22, yw + dMm / 2 + CLEAR + 1.2, wireZ], 0.6);   // the groove wall beside the wire
+      expect(inside(base, solid)).toBeGreaterThan(0.9 * solid.volume());
+    }
+  });
+  it("lever bender: the lever swings 0–180° clear of the base and block; its edge meets a stop bolt head at the angle", () => {
+    for (const dMm of [0.5, 3]) {
+      const g = benderGeometry(dieFor(dMm)!, dMm, [90]), { base, lever } = leverSolids(M, g);
+      for (let a = 0; a <= 180; a += 10) expect(inside(base, lever.rotate([0, 0, a])), `d=${dMm} ${a}°`).toBeLessThan(1e-6);
+      // stop at 90°: the lever turned to 89° misses a head-sized post in the 90° hole, at 91° it overlaps it
+      const s = g.stops.find((x) => x.angle === 90)!, head = { M3: 5.5, M4: 7, M5: 8.5, M6: 10 }[g.die.bolt];
+      const post = M.Manifold.cylinder(4, head / 2 - 0.01, head / 2 - 0.01, 64).translate([s.c[0], s.c[1], 9]);
+      expect(inside(post, lever.rotate([0, 0, 89]))).toBeLessThan(1e-6);
+      expect(inside(post, lever.rotate([0, 0, 91]))).toBeGreaterThan(0);
+    }
+  });
+  it("plate: wire clears between die and trap bolt and through the groove", () => {
+    const dMm = 1, g = benderGeometry(dieFor(dMm)!, dMm, [90]), solid = benderPlate(g).build(M)[0], yw = -(g.die.r + dMm / 2);
+    expect(inside(solid, along(M, [-45, yw, 6 + dMm / 2], [1, 0, 0], 0, 45, 0.8 * dMm))).toBeLessThan(1e-6);
+  });
+  it("benders build at Ø0.5, 1, 2, 3 mm", () => {
+    for (const dMm of [0.5, 1, 2, 3]) {
+      const g = benderGeometry(dieFor(dMm)!, dMm, [45, 90, 135, 180]);
+      for (const s of [benderLever(g), benderPlate(g)]) {
+        const b = buildPart(M, s, s.id);
+        expect(b.ok, `${s.id} d=${dMm}`).toBe(true);
+        if (b.ok) for (const seg of b.segments) expect(Math.max(...seg.size)).toBeLessThanOrEqual(MAX_SIZE);
+      }
+      expect(benderLever(g).id).toBe(`bender-lever-${g.die.bolt.toLowerCase()}`);
+      expect(benderLever(g).howTo[0].s).toBe("Print either this lever bender or the bending plate, not both");
+      expect(benderPlate(g).howTo[0].s).toBe("Print either this lever bender or the bending plate, not both");
+    }
+  });
+  it("which designs get parts", () => {
+    const ids = (id: string, extra: Params = {}) => { const { p, d } = setup(id, extra); return cutBendParts(ANTENNA_BY_ID[id], p, d).map((s) => s.id); };
+    const quad = ids("quad", { bands: "2.4e9-2.5e9" });   // UHF: the loops fit the board (2 m defaults are > 170 mm)
+    expect(quad.some((s) => s.startsWith("cut-board"))).toBe(true);
+    expect(quad.some((s) => s.startsWith("bender-lever-"))).toBe(true);
+    expect(quad.some((s) => s.startsWith("bender-plate-"))).toBe(true);
+    expect(ids("yagi")).toEqual([]);
+    expect(ids("dipole", { bands: "2.4e9-2.5e9" })).toEqual(["cut-board"]);
+    expect(ids("skyconecage")).toEqual([]);
+    expect(ids("quad").some((s) => s.startsWith("cut-board"))).toBe(false);
+    const { p, d } = setup("quad", { bands: "2.4e9-2.5e9" });
+    expect(partsFor("quad", p, d).map((s) => s.id)).toEqual(expect.arrayContaining(quad));
+  });
+  it("hole how-to: number, length and count, then what the piece is", () => {
+    const spec = cutBoards([hole(3, 0.1)])[0], k = spec.howTo.findIndex((m) => m.s === "Hole {0}: cut {1} × {2}");
+    expect(k).toBeGreaterThan(0);
+    expect(spec.howTo[k].a).toEqual([3, { len: 0.1 }, 1]);
+    expect(spec.howTo[k + 1]).toEqual(msg("Wire"));
   });
 });
