@@ -8,6 +8,7 @@ import { A4, type Page, type Prim, toPDF, toSVG, wrap } from "./drawing";
 import { buildPack, en, lenEn, pieces, type Msg } from "./build";
 import { boardsOf, copperBoxes, isProbe, type Pcb } from "./pcb";
 import { PROBE_CLEAR, PROBE_DRILL } from "./fab";
+import { bendRecipes, type Recipe } from "./recipe";
 
 /** A drawing in mm, origin at its own top-left. */
 interface Drawing { w: number; h: number; prims: Prim[]; caption: string }
@@ -106,6 +107,46 @@ function wireDrawing(def: AntennaDef, d: Design): Drawing | null {
   }
   return { w: eu + 2 * P, h: ev + 2 * P, prims, caption: `${def.name} - flat view, 1:1 - ${eu.toFixed(1)} x ${ev.toFixed(1)} mm` };
 }
+
+// ---------------------------------------------------------------- bend recipe strips
+
+const dMm = (m: number) => `${+(m * 1e3).toFixed(2)}`;
+const dieText = (r: Recipe) => (r.die ? `die: ${r.die.bolt} bolt` : "no bolt die (wire too thick), bend by hand");
+
+/** One 1:1 strip per bent piece: the cut wire laid along it, a red mark at every bend, the flat shape in the corner.
+ *  A piece whose strip would need more than 6 A4 tiles gets none (the recipe table has it). */
+function recipeDrawings(rs: Recipe[]): Drawing[] {
+  const out: Drawing[] = [];
+  for (const r of rs) {
+    if (!r.bends.length) continue;
+    const L = Math.max(r.cut, r.length) * 1e3, P = 10, H = 56;   // the strip also covers bends the recipe puts beyond the cut length
+    const w = L + 2 * P;
+    if (Math.min(tiles(w, H), tiles(H, w)) > 6) continue;
+    const y0 = 22, prims: Prim[] = [];
+    // wire at its diameter, cut ticks at both ends
+    prims.push({ k: "line", x1: P, y1: y0, x2: P + L, y2: y0, w: Math.max(r.dia * 1e3, 0.3), grey: true });
+    for (const x of [P, P + r.cut * 1e3]) prims.push({ k: "line", x1: x, y1: y0 - 5, x2: x, y2: y0 + 5, w: 0.4 });
+    prims.push({ k: "text", x: P, y: y0 - 7, s: "cut 0", size: 2.4, grey: true }, { k: "text", x: P + r.cut * 1e3, y: y0 - 7, s: `cut ${dMm(r.cut)} mm`, size: 2.4, grey: true, anchor: "end" });
+    r.bends.forEach((b, i) => {
+      const x = P + b.at * 1e3, dy = (i % 2) * 7;
+      prims.push({ k: "line", x1: x, y1: y0 - 6, x2: x, y2: y0 + 6, w: 0.5 },
+        { k: "text", x, y: y0 - 9 - dy, s: `B${i + 1}`, size: 3, bold: true, anchor: "middle" },
+        { k: "text", x, y: y0 + 10 + dy, s: `${dMm(b.at)} mm`, size: 2.4, anchor: "middle" },
+        { k: "text", x, y: y0 + 13 + dy, s: `${Math.round(b.angle)}° ${b.dir}${b.short ? " (short)" : ""}`, size: 2.4, bold: true, anchor: "middle" });
+    });
+    // the flat shape, small, in the lower left corner
+    const xs = r.path.map((q) => q[0]), ys = r.path.map((q) => q[1]);
+    const x1 = Math.min(...xs), y1 = Math.min(...ys), bw = Math.max(...xs) - x1 || 1, bh = Math.max(...ys) - y1 || 1;
+    const sc = Math.min(1, 60 / bw, 28 / bh), oy = y0 + 32;
+    const pts = r.path.map((q): [number, number] => [P + (q[0] - x1) * sc, oy + (bh - (q[1] - y1)) * sc]);
+    prims.push({ k: "poly", pts, closed: r.closed, lw: 0.4 }, { k: "text", x: P + bw * sc + 3, y: oy + 3, s: "shape, not to scale", size: 2.2, grey: true });
+    out.push({ w, h: H, prims, caption: `${r.tag ? r.tag + " " : ""}bend strip, 1:1 - Ø${dMm(r.dia)} mm wire, ${dieText(r)}, qty ${r.qty}` });
+  }
+  return out;
+}
+
+const RECIPE_TITLE = (name: string) => `${name}: 1:1 bend strips`;
+const RECIPE_SUB = "Cut the wire to the length on the strip. Lay it on the strip with the freshly cut end at 0 and mark every bend. B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing. Check the scale bar before you cut.";
 
 // ---------------------------------------------------------------- wire-cage frames
 
@@ -386,9 +427,15 @@ function inTile(q: Prim, x: number, y: number, w: number, h: number): boolean {
 
 // ---------------------------------------------------------------- public API
 
-export type TemplateKind = "pcb" | "wire" | "strip" | "sheet" | "none";
+export type TemplateKind = "pcb" | "wire" | "strip" | "sheet" | "recipe" | "none";
 
-export function templateKind(def: AntennaDef, d: Design): TemplateKind {
+/** `p` (the design's parameters) adds the bend-recipe strips; without it the recipe is left out. */
+export function templateKind(def: AntennaDef, d: Design, p?: Params): TemplateKind {
+  const k = baseKind(def, d);
+  return k === "none" && p && recipeDrawings(bendRecipes(def, p, d)).length ? "recipe" : k;
+}
+
+function baseKind(def: AntennaDef, d: Design): TemplateKind {
   if (d.pcb) return pcbDrawings(d.pcb, false, def.name).length ? "pcb" : "none";
   if (boomMarks(d)) return "strip";
   if (d.sheets?.length) return sheetDrawings(def, d).length ? "sheet" : "none";
@@ -397,7 +444,13 @@ export function templateKind(def: AntennaDef, d: Design): TemplateKind {
   return wireDrawing(def, d) ? "wire" : "none";
 }
 
-export function templatePages(def: AntennaDef, d: Design, mirror: boolean): Page[] {
+export function templatePages(def: AntennaDef, d: Design, mirror: boolean, p?: Params): Page[] {
+  const pages = basePages(def, d, mirror);
+  const rd = p ? recipeDrawings(bendRecipes(def, p, d)) : [];
+  return rd.length ? [...pages, ...layout(rd, RECIPE_TITLE(def.name), RECIPE_SUB)] : pages;
+}
+
+function basePages(def: AntennaDef, d: Design, mirror: boolean): Page[] {
   const name = def.name;
   if (d.pcb) {
     return layout(pcbDrawings(d.pcb, mirror, name), `${name}: 1:1 PCB template`, "Black = copper; grey marks (outline, crop marks, FEED) are not copper. Each layer is drawn as seen from its own face. The Mirrored option is for toner transfer: the top layer prints mirrored and the bottom layer as seen through the board from the top, toner against the copper face. Check the scale bar before you etch.");
@@ -418,7 +471,7 @@ export function templatePages(def: AntennaDef, d: Design, mirror: boolean): Page
 }
 
 /** One sheet at 1:1 for plotters, cutters and large-format printers (no tiling). */
-export function templateSVG(def: AntennaDef, d: Design, mirror: boolean): string | null {
+export function templateSVG(def: AntennaDef, d: Design, mirror: boolean, p?: Params): string | null {
   const ds: Drawing[] = [];
   if (d.pcb) {
     ds.push(...pcbDrawings(d.pcb, mirror, def.name));
@@ -437,6 +490,7 @@ export function templateSVG(def: AntennaDef, d: Design, mirror: boolean): string
       if (w) ds.push(w);
     }
   }
+  if (p) ds.push(...recipeDrawings(bendRecipes(def, p, d)));
   if (!ds.length) return null;
   const W = Math.max(...ds.map((x) => x.w)) + 20;
   const prims: Prim[] = [];
@@ -480,6 +534,12 @@ class Flow {
 
 const mmS = lenEn;
 
+/** "B1 31 mm 90° L; B2 ...; die M4 bolt" for the build sheet. */
+function recipeBends(r: Recipe): string {
+  const b = r.bends.map((x, i) => `B${i + 1} ${mmS(x.at)} ${Math.round(x.angle)}° ${x.dir}${x.short ? " (short)" : ""}`).join("; ") || "straight";
+  return `${b}; ${dieText(r)}`;
+}
+
 export function buildSheetPages(def: AntennaDef, p: Params, d: Design, version: string): Page[] {
   const pack = buildPack(def, p, d);
   const F = new Flow();
@@ -492,6 +552,13 @@ export function buildSheetPages(def: AntennaDef, p: Params, d: Design, version: 
     F.heading("Cut list");
     F.table([40, 16, 12, 30, 30, 18, 40], ["Part", "Tag", "Qty", "Length", "Cut to", "Dia.", "Note"],
       pack.cuts.map((c) => [t(c.what), c.tag, String(c.qty), mmS(c.length), mmS(c.cut), mmS(c.dia), c.note ? t(c.note) : ""]), [false, false, true, true, true, true, false]);
+  }
+  const recipes = bendRecipes(def, p, d).filter((r) => r.bends.length);
+  if (recipes.length) {
+    F.heading("Bend recipe");
+    F.para("B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing. The die is a steel bolt of the size given.");
+    F.table([34, 14, 12, 26, 100], ["Piece", "Dia.", "Qty", "Cut to", "Bends and die"],
+      recipes.map((r) => [r.tag || r.group, mmS(r.dia), String(r.qty), mmS(r.cut), recipeBends(r)]), [false, true, true, true, false]);
   }
   F.heading("Tuning");
   if (pack.tune.length) {
@@ -507,7 +574,7 @@ export function buildSheetPages(def: AntennaDef, p: Params, d: Design, version: 
 
 /** Build sheet followed by the 1:1 templates, as one PDF. */
 export function buildPackPDF(def: AntennaDef, p: Params, d: Design, version: string, mirror: boolean): Uint8Array {
-  const pages = [...buildSheetPages(def, p, d, version), ...templatePages(def, d, mirror)];
+  const pages = [...buildSheetPages(def, p, d, version), ...templatePages(def, d, mirror, p)];
   return toPDF(pages, `${def.name} build pack`);
 }
 

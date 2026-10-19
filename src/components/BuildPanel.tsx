@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AntennaDef, Design, Params } from "../lib/types";
 import { buildPack, type Msg } from "../lib/build";
+import { bendRecipes } from "../lib/recipe";
 import { buildPackPDF, templateKind, templateSVG } from "../lib/template";
 import { fabZip, toDXF } from "../lib/fab";
 import { useStore } from "../store";
@@ -22,7 +23,8 @@ export function BuildPanel({ def, params, design }: { def: AntennaDef; params: P
   const unit = useStore((s) => s.unit);
   const [mirror, setMirror] = useState(false);
   const pack = useMemo(() => buildPack(def, params, design), [def, params, design]);
-  const kind = useMemo(() => templateKind(def, design), [def, design]);
+  const recipes = useMemo(() => bendRecipes(def, params, design).filter((r) => r.bends.length), [def, params, design]);
+  const kind = useMemo(() => templateKind(def, design, params), [def, design, params]);
   const hasParts = useMemo(() => partsFor(def.id, params, design).length > 0, [def.id, params, design]);
   const m = (x?: Msg) => (x ? fmtMsg(t, unit, x) : "");
   const base = `${def.id}-${Math.round(design.f / 1e3) / 1e3}MHz`;
@@ -32,12 +34,12 @@ export function BuildPanel({ def, params, design }: { def: AntennaDef; params: P
         <h3>{t("Build pack")}</h3>
         <div className="exports">
           <button className="primary" onClick={() => download(`${base}-build.pdf`, buildPackPDF(def, params, design, __APP_VERSION__, mirror), "application/pdf")}>{t("Build sheet + 1:1 template (PDF)")}</button>
-          {kind !== "none" && <button onClick={() => { const s = templateSVG(def, design, mirror); if (s) download(`${base}-template.svg`, s, "image/svg+xml"); }}>{t("1:1 template (SVG)")}</button>}
+          {kind !== "none" && <button onClick={() => { const s = templateSVG(def, design, mirror, params); if (s) download(`${base}-template.svg`, s, "image/svg+xml"); }}>{t("1:1 template (SVG)")}</button>}
           {design.pcb && <button onClick={() => download(`${base}-gerber.zip`, fabZip(def, params, design, base.replace(/[^A-Za-z0-9_-]/g, "_"), __APP_VERSION__), "application/zip")}>{t("Gerber + drill + DXF (.zip)")}</button>}
           {design.pcb && <button onClick={() => download(`${base}.dxf`, toDXF(design.pcb!), "application/dxf")}>DXF</button>}
           {design.pcb && <label className="inline small"><input type="checkbox" checked={mirror} onChange={(e) => setMirror(e.target.checked)} /> {t("Mirrored (toner transfer)")}</label>}
         </div>
-        <p className="hint">{kind === "pcb" ? t("The PDF has the build sheet and the copper layers at 1:1; the zip has Gerber, drill and DXF files for a PCB fab.") : kind === "strip" ? t("The PDF has the build sheet and a 1:1 boom drilling strip to tape along the boom.") : kind === "wire" ? t("The PDF has the build sheet and a 1:1 template to bend or wind the wire on.") : kind === "sheet" ? t("The PDF has the build sheet and the 1:1 flat patterns of the sheet-metal parts.") : t("This antenna is too large for a paper template: use the cut list and a tape measure. The PDF has the build sheet.")} {t("Print the PDF at 100 % (actual size) and check the 50 mm scale bar. PDF text is in English.")}</p>
+        <p className="hint">{kind === "pcb" ? t("The PDF has the build sheet and the copper layers at 1:1; the zip has Gerber, drill and DXF files for a PCB fab.") : kind === "strip" ? t("The PDF has the build sheet and a 1:1 boom drilling strip to tape along the boom.") : kind === "wire" ? t("The PDF has the build sheet and a 1:1 template to bend or wind the wire on.") : kind === "sheet" ? t("The PDF has the build sheet and the 1:1 flat patterns of the sheet-metal parts.") : kind === "recipe" ? t("The PDF has the build sheet and a 1:1 strip for each bent wire, with the bend marks to copy onto the cut wire.") : recipes.length > 0 ? t("This antenna is too large for a paper template: use the cut list, the bend recipe and a tape measure. The PDF has the build sheet.") : t("This antenna needs no paper template: use the cut list and a tape measure. The PDF has the build sheet.")} {t("Print the PDF at 100 % (actual size) and check the 50 mm scale bar. PDF text is in English.")}</p>
       </div>
 
       {hasParts && <PrintPanel def={def} params={params} design={design} base={base} />}
@@ -63,6 +65,23 @@ export function BuildPanel({ def, params, design }: { def: AntennaDef; params: P
               ))}</tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {recipes.length > 0 && (
+        <div className="box">
+          <h3>{t("Bend recipe")}</h3>
+          <div className="scroll-x">
+            <table className="data">
+              <thead><tr><th>{t("Piece")}</th><th className="num">{t("Diameter")}</th><th className="num">{t("Qty")}</th><th className="num">{t("Cut to")}</th><th>{t("Bends")}</th><th>{t("Die")}</th></tr></thead>
+              <tbody>{recipes.map((r, i) => (
+                <tr key={i}><td>{r.tag || r.group}</td><td className="num">{fmtLen(r.dia, unit)}</td><td className="num">{r.qty}</td><td className="num"><b>{fmtLen(r.cut, unit)}</b></td>
+                  <td>{r.bends.map((b, k) => `B${k + 1} ${fmtLen(b.at, unit)} ${Math.round(b.angle)}° ${b.dir}${b.short ? ` (${t("short")})` : ""}`).join("; ")}</td>
+                  <td>{r.die ? t("{0} bolt", r.die.bolt) : t("by hand")}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+          <p className="hint">{t("B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing. The die is a steel bolt of the size given.")}</p>
         </div>
       )}
 

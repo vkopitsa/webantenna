@@ -286,7 +286,7 @@ export function cutList(def: AntennaDef, d: Design, trimmedTags: Set<string>): C
       if (pc.tag && !same.tag.split(/[,–]/).map((x) => x.trim()).includes(pc.tag)) same.tag = same.tag ? `${same.tag.split(/[,–]/)[0].trim()}–${pc.tag}` : pc.tag;
       continue;
     }
-    const note = tunable ? M("2 % long, trim to resonance") : def.id === "helix" ? M("Wind it on a former; see the helix dimensions") : pc.bends > 0 ? M("Bends: {0}, see the template; allow a little extra length for the bends and the joint at each end", pc.bends) : undefined;
+    const note = tunable ? M("2 % long, trim to resonance") : def.id === "helix" ? M("Wind it on a former; see the helix dimensions") : pc.bends > 0 ? M("Bends: {0}, see the bend recipe", pc.bends) : undefined;
     rows.push({ tag: pc.tag, what, qty: 1, length: pc.length, cut: tunable ? Math.ceil(pc.length * 1.02 * 1e3) / 1e3 : pc.length, dia: pc.dia, note });
   }
   return rows;
@@ -575,7 +575,7 @@ export const BUILD_STRINGS = [
   "SO-239 (UHF) or N chassis socket", "N or SMA chassis socket", "SMA chassis socket",
   "Balun or differential feed ({0} Ω)", "4:1 balun ({0} Ω to 50 Ω), e.g. a coax half-wave loop", "1:1 current balun (choke) at the feed point",
   "Impedance transformer {0} Ω to 50 Ω (λ/4 line or tapered strip)",
-  "2 % long, trim to resonance", "Bends: {0}, see the template; allow a little extra length for the bends and the joint at each end",
+  "2 % long, trim to resonance", "Bends: {0}, see the bend recipe",
   "PCB {0} × {1}, {2} thick, εr {3}", "{0} pc", "Copper on both sides", "Copper on the top side",
   "Coax for the sections (velocity factor as set)", "{0} pieces, {1} in total", "Wire or tube Ø{0}", "Add a little for bends and joints",
   "Boom or support tube Ø{0}", "{0} pc, {1}", "Element mounts (insulators or boom clamps)", "Metal disc Ø{0}", "Metal plate {0} × {1}",
