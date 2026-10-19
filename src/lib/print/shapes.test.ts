@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
 import { loadManifold } from "./manifold";
 import { buildPart, msg, PartError, FAIL, type PartSpec } from "./parts";
-import { dShape, pieceBottoms, stack, twistGroove, toZ } from "./shapes";
+import { digits, dShape, pieceBottoms, stack, twistGroove, toZ } from "./shapes";
 import { SEG_H } from "./rules";
 
 let M: ManifoldToplevel;
@@ -52,5 +52,30 @@ describe("dShape, stack", () => {
     const m = M.Manifold.cylinder(10, 1, 1, 12).rotate([0, 90, 0]).translate([5, 5, 0]);   // along +x from (5,5,0)
     const b = toZ(m, [5, 5, 0], [1, 0, 0]).boundingBox();
     expect(b.min[2]).toBeCloseTo(0, 4); expect(b.max[2]).toBeCloseTo(10, 4);
+  });
+});
+
+describe("digits", () => {
+  it("every glyph builds", () => {
+    for (const c of "0123456789") {
+      const g = digits(M, c, 0, 0, 5, 0.6, 3);
+      expect(g.status(), c).toBe("NoError");
+      expect(g.isEmpty(), c).toBe(false);
+    }
+  });
+  it("8 has more volume than 1", () => {
+    expect(digits(M, "8", 0, 0, 5, 0.6, 3).volume()).toBeGreaterThan(digits(M, "1", 0, 0, 5, 0.6, 3).volume());
+  });
+  it("width grows with length", () => {
+    const w = (s: string) => { const b = digits(M, s, 0, 0, 5, 0.6, 3).boundingBox(); return b.max[0] - b.min[0]; };
+    expect(w("123")).toBeGreaterThan(w("1"));
+  });
+  it("spans zTop - depth to zTop + 0.01", () => {
+    const b = digits(M, "8", 1, 2, 5, 0.6, 3).boundingBox();
+    expect(b.min[2]).toBeCloseTo(2.4, 6);
+    expect(b.max[2]).toBeCloseTo(3.01, 6);
+  });
+  it("rejects letters", () => {
+    expect(() => digits(M, "A", 0, 0, 5, 0.6, 3)).toThrow();
   });
 });

@@ -100,3 +100,29 @@ export function toZ(part: Manifold, at: V3, dir: V3): Manifold {
   const u = unit(dir), th = (Math.acos(Math.max(-1, Math.min(1, u[2]))) * 180) / Math.PI, ph = (Math.atan2(u[1], u[0]) * 180) / Math.PI;
   return part.translate(scale(at, -1)).rotate([0, 0, -ph]).rotate([0, -th, 0]);
 }
+
+/** Seven segments a–g (top, upper right, lower right, bottom, lower left, upper left, middle) lit for each digit. */
+const SEGMENTS: Record<string, string> = {
+  "0": "abcdef", "1": "bc", "2": "abdeg", "3": "abcdg", "4": "bcfg",
+  "5": "acdfg", "6": "acdefg", "7": "abc", "8": "abcdefg", "9": "abcdfg",
+};
+
+/** Engraving cutter: seven-segment digits of height h (width 0.6 h), left-bottom at (x, y), from zTop − depth to zTop + 0.01 (to subtract). */
+export function digits(M: M, text: string, x: number, y: number, h: number, depth: number, zTop: number): Manifold {
+  const w = 0.6 * h, s = Math.max(0.8, h / 7), pitch = w + 0.25 * h;
+  const z0 = zTop - depth, z1 = zTop + 0.01, ym = (h - s) / 2;
+  const parts: Manifold[] = [];
+  [...text].forEach((ch, i) => {
+    const on = SEGMENTS[ch];
+    if (on === undefined) throw new Error(`digits: unsupported character "${ch}"`);
+    const x0 = x + i * pitch;
+    const rect = (a: number, b: number, c: number, d: number) => box(M, [x0 + a, y + b, z0], [x0 + c, y + d, z1]);
+    const seg: Record<string, Manifold> = {
+      a: rect(0, h - s, w, h), d: rect(0, 0, w, s), g: rect(0, ym, w, ym + s),
+      b: rect(w - s, ym, w, h), c: rect(w - s, 0, w, ym + s),
+      e: rect(0, 0, s, ym + s), f: rect(0, ym, s, h),
+    };
+    for (const k of on) parts.push(seg[k]);
+  });
+  return M.Manifold.union(parts);
+}
