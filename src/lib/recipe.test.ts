@@ -7,22 +7,39 @@ import { bendRecipes, dieFor, type Recipe } from "./recipe";
 const build = (id: string, extra: Params = {}) => { const def = ANTENNA_BY_ID[id]; const p = { ...def.defaults, ...extra }; return { def, p, d: def.build(p) }; };
 const recipes = (id: string, extra: Params = {}) => { const { def, p, d } = build(id, extra); return bendRecipes(def, p, d); };
 
-/** Walk the recipe as a turtle from (0,0) heading +x; returns the virtual corners (intersections of the straight runs). */
+/** Walk the recipe as a turtle from (0,0) heading +x; returns the virtual corners (intersections of the straight runs).
+ *  Gentle turns (curves) are followed as chords of the recipe's path; corners are placed by the bends' `at` marks. */
 function rebuild(r: Recipe): P2[] {
-  const Rc = r.die!.r + r.dia * 1000 / 2;
-  let x = 0, y = 0, h = 0, s = 0;
+  const Rc = r.die!.r + r.dia * 1000 / 2, q = r.path, n = q.length, m = r.closed ? n : n - 1, v = (i: number) => q[i % n];
+  let x = 0, y = 0, h = 0, s = 0, prevT = 0, k = 0;
+  const go = (dist: number) => { x += Math.cos(h) * dist; y += Math.sin(h) * dist; };
   const out: P2[] = [];
-  // gentle curves are not in the recipe's turtle: compare only the bends before the first one
-  const cut = r.curves.length ? r.curves[0].from : Infinity;
-  for (const b of r.bends.filter((x) => x.at < cut)) {
-    const run = b.at * 1000 - s, th = b.angle * Math.PI / 180, t = Rc * Math.tan(th / 2);
-    x += Math.cos(h) * (run + t); y += Math.sin(h) * (run + t);   // the virtual corner
-    out.push(b.short ? [NaN, NaN] : [x, y]);
-    h += b.dir === "L" ? th : -th;
-    x += Math.cos(h) * t; y += Math.sin(h) * t;                   // end of the arc
-    s = b.at * 1000 + Rc * th;
+  for (let i = 1; i < m; i++) {
+    const a = v(i - 1), b = v(i), c = v(i + 1), u = [b[0] - a[0], b[1] - a[1]], w = [c[0] - b[0], c[1] - b[1]];
+    const th = Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1]), deg = Math.abs(th) * 180 / Math.PI;
+    if (deg > 20) {
+      const bd = r.bends[k++], t = Rc * Math.tan(Math.abs(th) / 2);
+      go(bd.at * 1000 - s + t);                                      // the virtual corner
+      out.push(bd.short ? [NaN, NaN] : [x, y]);
+      h += bd.dir === "L" ? Math.abs(th) : -Math.abs(th);
+      go(t);                                                         // end of the arc
+      s = bd.at * 1000 + Rc * Math.abs(th); prevT = t;
+    } else if (deg > 1) {
+      const L = Math.hypot(...u) - prevT;
+      go(L); s += L; h += th; prevT = 0;
+    }
   }
   return out;
+}
+
+/** Compare the rebuilt corners with the design's; returns how many were compared (short runs are skipped). */
+function compare(r: Recipe): number {
+  const mine = rebuild(r), want = designCorners(r);
+  expect(mine).toHaveLength(want.length);
+  expect(r.bends).toHaveLength(want.length);
+  let n = 0;
+  mine.forEach((q, i) => { if (!Number.isNaN(q[0])) { n++; expect(Math.hypot(q[0] - want[i][0], q[1] - want[i][1])).toBeLessThan(0.5); } });
+  return n;
 }
 
 /** Corners (turn > 20°, not the cut ends) of the recipe's flattened path, in the recipe's frame (first point at the origin, first segment along +x). */
@@ -66,11 +83,7 @@ describe("bendRecipes", () => {
     const { def, p, d } = build(id, extra);
     const rs = bendRecipes(def, p, d).filter((r) => r.die);
     expect(rs.length).toBeGreaterThan(0);
-    for (const r of rs) {
-      const mine = rebuild(r), want = designCorners(r);
-      if (!r.curves.length) expect(mine).toHaveLength(want.length);
-      mine.forEach((q, i) => { if (!Number.isNaN(q[0])) expect(Math.hypot(q[0] - want[i][0], q[1] - want[i][1])).toBeLessThan(0.5); });
-    }
+    for (const r of rs) expect(compare(r)).toBeGreaterThan(0);
   });
 
   it("wire between bolt sizes uses the bolt radius", () => {
@@ -78,9 +91,18 @@ describe("bendRecipes", () => {
     const rs = bendRecipes(def, p, d);
     expect(rs[0].die!.bolt).toBe("M4");
     for (const r of rs) {
-      const mine = rebuild(r), want = designCorners(r);
-      mine.forEach((q, i) => { if (!Number.isNaN(q[0])) expect(Math.hypot(q[0] - want[i][0], q[1] - want[i][1])).toBeLessThan(0.5); });
+      expect(r.bends.some((b) => b.short)).toBe(false);
+      expect(compare(r)).toBe(r.bends.length);
     }
+  });
+
+  it("biquad: both cut ends sit at the feed, so the 7 other vertices are the copper bends", () => {
+    // vertex 0 is where the two wire ends meet (the feed terminal), not a bend in the copper
+    const { def, p, d } = build("biquad");
+    const [r] = bendRecipes(def, p, d), bp = bendPaths(d)[0], fb = d.wires.find((w) => w.group === "feed")!.b.map((c) => c * 1000);
+    expect(r.bends).toHaveLength(7);
+    expect(r.path).toHaveLength(8);
+    expect(Math.hypot(...bp.pts[0].map((c, i) => c - fb[i]))).toBeLessThan(1);
   });
 
   it("short run is flagged", () => {

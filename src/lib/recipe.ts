@@ -57,6 +57,7 @@ function startAtFeed(bp: BendPath, d: Design): BendPath {
 
 /** Bend recipes of the design's wire pieces (one per distinct shape, `qty` copies); [] for sky-cone types. */
 export function bendRecipes(def: AntennaDef, p: Params, d: Design): Recipe[] {
+  // sky-cone types have their own kit; d.cuts replaces the wire pieces by a table, and printed antennas have no bent wire
   if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
   const trimmed = new Set(tuning(def, p, d).rows.map((r) => r.tag));
   const pcs = pieces(d), rows = cutList(def, d, trimmed);
@@ -64,11 +65,17 @@ export function bendRecipes(def: AntennaDef, p: Params, d: Design): Recipe[] {
   for (const bp0 of bendPaths(d)) {
     const bp = startAtFeed(bp0, d), f = flatten(bp);
     if (!f) continue;
-    const sig = signature(f), k = sigs.indexOf(sig);
-    if (k >= 0) { out[k].qty++; continue; }
     const pc = pcs.find((q) => !q.mech && bp0.wires.some((w) => q.wires.includes(w)));
     if (!pc) continue;
     const row = rows.find((r) => r.tag.split(/[,–]/).map((x) => x.trim()).includes(pc.tag) && pc.tag !== "");
+    const sig = signature(f), cutLen = row?.cut ?? pc.length;
+    const k = sigs.findIndex((x, j) => x === sig && Math.abs(out[j].cut - cutLen) < 0.5e-3 && Math.abs(out[j].dia - pc.dia) < 1e-5);
+    if (k >= 0) {
+      out[k].qty++;
+      const tags = out[k].tag.split(/[,–]/).map((x) => x.trim());
+      if (pc.tag && !tags.includes(pc.tag)) out[k].tag = `${tags[0]}–${pc.tag}`;
+      continue;
+    }
     const die = dieFor(f.d), Rc = die ? die.r + f.d / 2 : 0;
     const n = f.pts.length, m = f.closed ? n : n - 1;   // vertices 0..m; for a closed loop vertex m is vertex 0 again
     const v = (i: number) => f.pts[i % n];
@@ -97,7 +104,7 @@ export function bendRecipes(def: AntennaDef, p: Params, d: Design): Recipe[] {
       } else open = false;
     }
     sigs.push(sig);
-    out.push({ tag: pc.tag, group: bp.group, dia: pc.dia, qty: 1, cut: row?.cut ?? pc.length, length: s / 1000, closed: f.closed, die, bends, curves, path: f.pts });
+    out.push({ tag: pc.tag, group: bp.group, dia: pc.dia, qty: 1, cut: cutLen, length: s / 1000, closed: f.closed, die, bends, curves, path: f.pts });
   }
   return out;
 }
