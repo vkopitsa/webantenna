@@ -11,6 +11,7 @@ def hub_for(d_m, n=16):
 
 def seg_for(d_m, f_hi):
     r = d_m / 2
+    # + 1e-9: d comes from a float product (e.g. 1.0 * 1e-3), so Ø1 must not fall to the thick-wire branch by rounding
     base = 1.5e-3 if d_m <= 1.0e-3 + 1e-9 else max(1.5e-3, 4 * r)   # Ø <= 1 mm keeps the 1.5 mm of the existing tables
     return round(min(base, 3e8 / f_hi / 10), 6)
 
@@ -19,6 +20,8 @@ def _bad(L, rads):
     """PyNEC (c_geometry::wire) rejects a new wire whose length is between 1 and 2 radii of a wire already in the
     geometry that it joins (measured: 0.98 - 2.0 r; shorter or longer pieces pass). Only the new wire is checked
     against the earlier ones, so the same pair passes the other way round. A small margin on both sides."""
+    # 0.97 / 2.05: 1-2.5 % outside the measured 0.98 / 2.0 edges (scan step 0.02 r); no Ø1 wire falls in the margin
+    # (check_d1_wires.py asserts nec_order() is the identity on all six Ø1 designs)
     return any(0.97 * q <= L <= 2.05 * q for q in rads)
 
 

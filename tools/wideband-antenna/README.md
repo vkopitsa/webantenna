@@ -107,8 +107,10 @@ and A55 stops at 0.8 mm.
   `python compare_tables.py wires/app_W40_d1.0.json ../../src/lib/antennas/skycone.data.ts:SKYCONE_W40`
   (B44f is `SKYCONE_B44`, and `--bare` compares the bare block).
   - Result: ≤ 0.05 Ω / 0.05 dB on the app tables (the .ts rounding) and 0.000 on the bare tables.
-  - Rerun a 2-frequency Ø1 run after any change to `family10.py` / `wirecage.py`. The Ø1 wire lists must stay
-    identical.
+  - After any change to `family10.py`, `wirecage.py`, `sheetgrid.py` or `wire_variant.py`, run
+    `python check_d1_wires.py` (no NEC solve, a few seconds). For every Ø1 design (and S40's sheet grid) it checks
+    that `nec_order()` is the identity and that the wire-list hash matches the one made with the pre-change code
+    (61caeb7). For a numeric check, add a 2-frequency Ø1 export compared with `compare_tables.py`.
 - **The PyNEC rule behind the thick-wire fixes:**
   - `c_geometry::wire` rejects ("Unknown exception") a new wire 0.98–2.0 radii long that joins an earlier wire of
     that radius. Shorter or longer pieces pass, and so does the reverse order.

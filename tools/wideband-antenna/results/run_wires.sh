@@ -20,7 +20,7 @@ for d in $DS; do
   E64=$($PY wire_variant.py "$dm" 6.4e9) && [ -n "$E64" ] || { echo "wire_variant.py failed for $d mm" >&2; exit 1; }
   E70=$($PY wire_variant.py "$dm" 7.0e9) && [ -n "$E70" ] || { echo "wire_variant.py failed for $d mm" >&2; exit 1; }
   E14=$($PY wire_variant.py "$dm" 1.36e9) && [ -n "$E14" ] || { echo "wire_variant.py failed for $d mm" >&2; exit 1; }
-  one=$($PY -c "print(int(abs($d - 1.0) < 1e-9))")        # Ø1.0 written as 1, 1.0 or 1.00
+  one=$($PY -c "print(int(abs($d - 1.0) < 1e-9))")        # Ø1.0 written as 1, 1.0 or 1.00 (1e-9: float tolerance)
   want() { case " $SKIP " in *" $1:$d "*) return 1;; esac; return 0; }
   rm -f wires/done_*_d$d
   # --- phase 1: app tables ---

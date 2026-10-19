@@ -68,17 +68,10 @@ def _hubbed(path, z_axis_ok=True):
     return out, hubs
 
 
-def model(fam, p, f, n, r, rings=True, axis=True, per=20, hub=4, hoop=0.0, seg=None, els=None, info=None, feed_ns=1):
-    """NEC-2 model at f: n frames of wire radius r; wires that meet near the axis end on a hub ring (polygon of n
-    chords, thinner wire) joined to the axis point by `hub` spokes. hoop > 0 (m): extra hoops along every path
-    segment, at most that far apart. seg (m): fixed segment length instead of lambda / per. els: elevations (deg)
-    for the pattern instead of ELS. info (dict): gets the NEC context, the tags of frame 0 ("frame0": [(tag, a, b)])
-    and every wire ("wires": [(kind, a xyz, b xyz, radius)]). feed_ns: segments of the pin-gap wire, source on the
-    middle one (the app's NEC export uses 5)."""
+def wire_list(fam, p, n, r, rings=True, axis=True, hub=4, hoop=0.0):
+    """The cage's wires before NEC ordering: [feed, (kind, a xyz, b xyz, radius), ...] (kinds feed / frame0 / frame /
+    ring / spoke / axis); model() hands them to NEC in nec_order(). No NEC call (check_d1_wires.py hashes them)."""
     hot, gnd = paths(fam, p)
-    lam = 3e8 / f
-    c = nec_context()
-    G = c.get_geometry()
     wires = []
     def wire(a, b, rad, kind="frame"):
         wires.append((kind, a, b, rad))
@@ -109,6 +102,20 @@ def model(fam, p, f, n, r, rings=True, axis=True, per=20, hub=4, hoop=0.0, seg=N
             wire(xyz(axis_pt, 0), xyz(ring, ang[k]), min(r, 0.5e-3), "spoke")
     if axis and hot[-1][0] < 1e-9:
         wire((0, 0, g), (0, 0, hot[-1][1]), r, "axis")
+    return [feed] + wires
+
+
+def model(fam, p, f, n, r, rings=True, axis=True, per=20, hub=4, hoop=0.0, seg=None, els=None, info=None, feed_ns=1):
+    """NEC-2 model at f: n frames of wire radius r; wires that meet near the axis end on a hub ring (polygon of n
+    chords, thinner wire) joined to the axis point by `hub` spokes. hoop > 0 (m): extra hoops along every path
+    segment, at most that far apart. seg (m): fixed segment length instead of lambda / per. els: elevations (deg)
+    for the pattern instead of ELS. info (dict): gets the NEC context, the tags of frame 0 ("frame0": [(tag, a, b)])
+    and every wire ("wires": [(kind, a xyz, b xyz, radius)]). feed_ns: segments of the pin-gap wire, source on the
+    middle one (the app's NEC export uses 5)."""
+    feed, *wires = wire_list(fam, p, n, r, rings, axis, hub, hoop)
+    lam = 3e8 / f
+    c = nec_context()
+    G = c.get_geometry()
     order = nec_order([feed] + wires)            # short pieces next to thick wires go first (NEC rejects them after)
     wires = [([feed] + wires)[i] for i in order][1:]
     G.wire(1, feed_ns, *feed[1], *feed[2], feed[3], 1, 1)
