@@ -1,6 +1,7 @@
 // Build-step text → picture id. Eager and tiny: the scenes themselves load lazily (StepPic, Gallery).
 import type * as S from "./scenes/index";
 import { STEP_TEXT } from "../../lib/build";
+import { CUTBEND_HOWTO } from "../../lib/print/families/cutbend";
 
 /** Every scene id; extended by adding a scene to SCENES. */
 export type SceneId = keyof typeof S.SCENES;
@@ -34,6 +35,12 @@ export const STEP_PICS: Record<string, SceneId> = {
   [STEP_TEXT.air.jack]: "fit-jack",
   [STEP_TEXT.air.mount]: "mount-patch",
   [STEP_TEXT.air.director]: "fit-director",
+  [CUTBEND_HOWTO.board[0]]: "print-flat-board",
+  [CUTBEND_HOWTO.board[1]]: "cutboard-cut",
+  [CUTBEND_HOWTO.board[2]]: "cutboard-mark",
+  [CUTBEND_HOWTO.board[3]]: "bend-order",
+  [CUTBEND_HOWTO.lever[7]]: "bend-order",
+  [CUTBEND_HOWTO.plate[5]]: "bend-order",
 };
 
 /** Key lists claimed complete: the tests require a picture for every key in them. */
@@ -43,4 +50,5 @@ export const DONE_GROUPS: string[][] = [
   Object.values(STEP_TEXT.pcb),
   Object.values(STEP_TEXT.loop),
   Object.values(STEP_TEXT.air),
+  CUTBEND_HOWTO.board,
 ];

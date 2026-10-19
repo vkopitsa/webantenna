@@ -87,17 +87,17 @@ export function Label({ x, y, text, to, anchor = "start" }: { x: number; y: numb
   );
 }
 
-/** A dashed accent arrow along `d` (the motion to make). */
-export function Arrow({ d }: { d: string }) {
+/** A dashed accent arrow along `d` (the motion to make); `both` puts a head on each end (to and fro). */
+export function Arrow({ d, both = false }: { d: string; both?: boolean }) {
   const id = useSvgId("arr");
   return (
     <g>
       <defs>
-        <marker id={id} markerWidth={10} markerHeight={10} refX={5} refY={5} orient="auto" markerUnits="userSpaceOnUse">
+        <marker id={id} markerWidth={10} markerHeight={10} refX={5} refY={5} orient="auto-start-reverse" markerUnits="userSpaceOnUse">
           <path d="M0 0 L10 5 L0 10z" fill="var(--accent)" />
         </marker>
       </defs>
-      <path d={d} fill="none" stroke="var(--accent)" strokeWidth={3} strokeDasharray="7 4" markerEnd={`url(#${id})`} />
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth={3} strokeDasharray="7 4" markerStart={both ? `url(#${id})` : undefined} markerEnd={`url(#${id})`} />
     </g>
   );
 }
@@ -412,6 +412,75 @@ export function SmaJack({ x, y, pin = 60 }: { x: number; y: number; pin?: number
       <rect x={x - 22} y={y} width={44} height={6} {...gold} />
       <rect x={x - 10} y={y + 6} width={20} height={40} {...gold} />
       {[12, 18, 24, 30, 36, 42].map((i) => <line key={i} x1={x - 10} y1={y + i} x2={x + 10} y2={y + i - 3} stroke={FG} strokeWidth={0.7} />)}
+    </g>
+  );
+}
+
+/** A felt-tip marker pen, red tip at (x, y), body along −x. */
+export function Pen({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
+  return (
+    <g transform={tf(x, y, rot)}>
+      <path d="M0 0 L-8 -3 L-8 3 Z" fill="var(--mark)" stroke={FG} strokeWidth={0.8} strokeLinejoin="round" />
+      <rect x={-15} y={-4} width={7} height={8} fill="var(--bolt)" stroke={FG} strokeWidth={1} />
+      <rect x={-75} y={-6} width={60} height={12} rx={3} fill="var(--panel)" stroke={FG} strokeWidth={1.2} />
+      <rect x={-90} y={-6.5} width={18} height={13} rx={3} fill="var(--mark)" stroke={FG} strokeWidth={1.2} />
+    </g>
+  );
+}
+
+/**
+ * A 3D printer's bed seen from the front and a little from above: the front edge runs from (x, y) to (x + w, y)
+ * and the top face recedes by (dx, dy) to the back (dx < 0 shows the left end).
+ */
+export function PrintBed({ x, y, w, dx = -20, dy = -50 }: { x: number; y: number; w: number; dx?: number; dy?: number }) {
+  const sx = dx < 0 ? x : x + w;
+  return (
+    <g>
+      <path d={`M${x} ${y} L${x + w} ${y} L${x + w + dx} ${y + dy} L${x + dx} ${y + dy} Z`} fill="var(--bolt)" stroke={FG} strokeWidth={1.2} strokeLinejoin="round" />
+      <path d={`M${sx} ${y} L${sx + dx} ${y + dy} L${sx + dx} ${y + dy + 10} L${sx} ${y + 10} Z`} fill="var(--coax)" stroke={FG} strokeWidth={1.2} strokeLinejoin="round" />
+      <rect x={x} y={y} width={w} height={10} fill="var(--coax)" stroke={FG} strokeWidth={1.2} />
+    </g>
+  );
+}
+
+/** A 3D printer's print head from the front: nozzle tip at (x, y), heater block and fan-cooled heat sink above it. */
+export function Hotend({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={tf(x, y)}>
+      <rect x={-18} y={-58} width={36} height={34} rx={3} fill="var(--coax)" stroke={FG} strokeWidth={1.2} />
+      <circle cx={0} cy={-41} r={12} fill="none" stroke="var(--bolt)" strokeWidth={1.5} />
+      <circle cx={0} cy={-41} r={3} fill="var(--bolt)" />
+      <rect x={-12} y={-24} width={24} height={12} fill="var(--bolt)" stroke={FG} strokeWidth={1} />
+      <path d="M-6 -12 L6 -12 L1.5 -2 L0 0 L-1.5 -2 Z" fill="var(--solder)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
+    </g>
+  );
+}
+
+/**
+ * A part printed on a PrintBed, built up layer by layer: a box seen like the bed, front face w × h with its bottom-left
+ * corner at (x, y), receding by (dx, dy). Its `n` layers appear from the bottom up between loop fractions `times`.
+ * `top` is drawn on the top face once the part is finished, in flat coordinates: u 0…w left to right, v 0…depth back to front.
+ */
+export function PrintLayers({ x, y, w, h, dx, dy, depth, n, times, top }: {
+  x: number; y: number; w: number; h: number; dx: number; dy: number; depth: number; n: number; times: [number, number]; top?: ReactNode;
+}) {
+  const lh = h / n, step = (times[1] - times[0]) / n, sx = dx < 0 ? x : x + w;
+  const edge = { stroke: "var(--plastic-edge)", strokeWidth: 1, strokeLinejoin: "round" as const };
+  return (
+    <g>
+      {Array.from({ length: n }, (_, i) => {
+        const yb = y - i * lh, yt = yb - lh;
+        const end = `M${sx} ${yb} L${sx} ${yt} L${sx + dx} ${yt + dy} L${sx + dx} ${yb + dy} Z`;
+        return (
+          <Appear key={i} a={times[0] + step * (i + 1) - 0.04}>
+            <path d={`M${x} ${yt} L${x + w} ${yt} L${x + w + dx} ${yt + dy} L${x + dx} ${yt + dy} Z`} fill="var(--plastic)" {...edge} />
+            <path d={end} fill="var(--plastic)" {...edge} />
+            <path d={end} fill={FG} opacity={0.12} />
+            <rect x={x} y={yt} width={w} height={lh} fill="var(--plastic)" {...edge} />
+          </Appear>
+        );
+      })}
+      {top && <Appear a={times[1]}><g transform={`matrix(1 0 ${-dx / depth} ${-dy / depth} ${x + dx} ${y - h + dy})`}>{top}</g></Appear>}
     </g>
   );
 }
