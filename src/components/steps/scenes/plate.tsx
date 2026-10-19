@@ -199,16 +199,17 @@ const plateBend: Scene = {
   still: 4.0,
   draw: (t) => {
     // The leg is bent counter-clockwise until it lies on the 90° line against the stop bolt's shank. Pressing past it:
-    // the stop holds the outer part, so the hand pushes the leg near the die 5° past the line (the leg bows), lets go,
-    // and the copper springs back straight onto the line.
-    const OVER = 5, LEN = 100, HR = 52;
-    const swing = [0, 0, -90, -90, -90 - OVER, -90 - OVER, -90, -90, 0, 0], st = [0, 0.08, 0.4, 0.48, 0.54, 0.62, 0.66, 0.94, 0.97, 1];
+    // the stop holds the outer part, so the hand pushes the leg near the die past the line (the leg bows, drawn at BOW°,
+    // more than the 2–5° it is, like the bolts and the wire are drawn larger than scale), lets go, and the copper springs
+    // back straight onto the line.
+    const OVER = 5, BOW = 14, LEN = 100, HR = 30, HS = 0.65;
+    const swing = [0, 0, -90, -90, -90 - BOW, -90 - BOW, -90, -90, 0, 0], st = [0, 0.08, 0.4, 0.48, 0.54, 0.62, 0.66, 0.94, 0.97, 1];
     const s = Math.sin(185 * Math.PI / 180), c = Math.cos(185 * Math.PI / 180);
     const p = (a: number, r: number) => ray(a, r, WY).join(" ");
-    const bowed = `M${p(90 + OVER, 0)} C${p(90 + OVER, 26)} ${p(90, 44)} ${p(90, 66)} L${p(90, LEN)}`;
-    const straightOn = { values: [1, 1, 0, 0, 1, 1], times: [0, 0.48, 0.5, 0.64, 0.66, 1] };
-    const bowOn = { values: [0, 0, 1, 1, 0, 0], times: [0, 0.48, 0.5, 0.64, 0.66, 1] };
-    const tk0 = ray(90 + OVER, L0 - 4, WY), tk1 = ray(90 + OVER, L1, WY), [sx, sy] = ray(90, PR), cy = sy;
+    const bowed = `M${p(90 + BOW, 0)} L${p(90 + BOW, 30)} C${p(90 + BOW, 46)} ${p(90, 50)} ${p(90, 68)} L${p(90, LEN)}`;
+    const straightOn = { values: [1, 1, 0, 0, 1, 1], times: [0, 0.48, 0.54, 0.62, 0.66, 1] };
+    const bowOn = { values: [0, 0, 1, 1, 0, 0], times: [0, 0.48, 0.54, 0.62, 0.66, 1] };
+    const [sx, sy] = ray(90, PR), cy = sy;
     return <g transform={`translate(${CX} ${CY + 6})`}>
       {plateAbove(null)}
       <Fade values={[1, 1, 0, 0, 1]} times={[0, 0.92, 0.94, 0.98, 1]}>
@@ -233,22 +234,19 @@ const plateBend: Scene = {
       {/* the hand: pushes the leg round to the stop, presses it past near the die, lets go */}
       <Fade values={[1, 1, 0, 0, 1]} times={[0, 0.92, 0.94, 0.98, 1]}>
         <Rot about={[0, 0]} values={[0, 0, -90, -90]} times={[0, 0.08, 0.4, 1]}>
-          <Move values={[[0, 0], [0, 0], [0, -5], [0, -5], [0, 14], [0, 14]]} times={[0, 0.48, 0.54, 0.62, 0.68, 1]}>
-            <g transform={`translate(${HR} ${WY + WIRE_W / 2 + 1}) scale(0.75)`}><Hand x={0} y={0} rot={-90} /></g>
+          <Move values={[[0, 0], [0, 0], [0, -8], [0, -8], [0, 14], [0, 14]]} times={[0, 0.48, 0.54, 0.62, 0.68, 1]}>
+            <g transform={`translate(${HR} ${WY + WIRE_W / 2 + 1}) scale(${HS})`}><Hand x={0} y={0} rot={-90} /></g>
           </Move>
         </Rot>
       </Fade>
       <Appear a={0.08}><Arrow d={`M${ray(-14, 112).join(" ")} A112 112 0 0 0 ${ray(80, 112).join(" ")}`} /></Appear>
-      <Appear a={0.48}><Arrow d={`M${WY + 70} ${-HR - 26} L${WY + 44} ${-HR - 26}`} /></Appear>
-      <Appear a={0.54}>
-        <line x1={tk0[0]} y1={tk0[1]} x2={tk1[0]} y2={tk1[1]} stroke="var(--accent)" strokeWidth={2.5} strokeLinecap="round" />
-        <Label x={-10} y={-12} text={`+${OVER}°`} anchor="end" />
-      </Appear>
-      <Appear a={0.64}><Arrow d={`M-24 -68 L3 -68`} /></Appear>
-      <Appear a={0.64}><Label x={-28} y={-66} text={t("springback")} anchor="end" /></Appear>
+      <Appear a={0.48}><Arrow d="M98 -27 L71 -27" /></Appear>
+      <Appear a={0.54}><Label x={15} y={-62} text={`+${OVER}°`} /></Appear>
+      <Appear a={0.64}><Arrow d="M-22 -42 L1 -42" /></Appear>
+      <Appear a={0.64}><Label x={-28} y={-68} text={t("springback")} anchor="end" to={[-24, -46]} /></Appear>
       <Label x={-46} y={-96} text={t("stop bolt")} anchor="end" to={[sx - DIE_R + 1, sy - 2]} />
-      <Label x={34} y={54} text={t("die")} to={[5, 6]} />
-      <Appear a={0.08}><Label x={120} y={-6} text={t("hand")} to={[64, -38]} /></Appear>
+      <Label x={-40} y={0} text={t("die")} anchor="end" to={[-7, -2]} />
+      <Appear a={0.08}><Label x={120} y={-2} text={t("hand")} to={[60, -20]} /></Appear>
     </g>;
   },
 };
