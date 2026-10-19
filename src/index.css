@@ -102,7 +102,24 @@ label { color: var(--muted); font-size: 12px; }
   --metal: rgba(251, 191, 36, 0.25); --metal-edge: #f59e0b; --dielectric: rgba(74, 222, 128, 0.15); --dielectric-edge: #4ade80;
   --axis-x: #f87171; --axis-y: #4ade80; --axis-z: #60a5fa; --field-lo: #0b3a2b; --field-mid: #d97706; --field-hi: #fde7a8; }
 
+/* build-step pictures: materials */
+:root {
+  --copper: #b5651d; --mark: #d40000; --bolt: #9aa5b1; --stop: #e9b949; --plastic: #dfe5ec; --plastic-edge: #556070;
+  --sheet: #c9ced6; --fr4: #2f7d4a; --solder: #c0c4c8; --coax: #2b2f36;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --copper: #d9894a; --mark: #ff6b6b; --bolt: #8a96a3; --stop: #e9b949; --plastic: #3a4452; --plastic-edge: #9aa6b5;
+    --sheet: #6b7480; --fr4: #3f9c5f; --solder: #d5d9dd; --coax: #11141a;
+  }
+}
+:root[data-theme="dark"] {
+  --copper: #d9894a; --mark: #ff6b6b; --bolt: #8a96a3; --stop: #e9b949; --plastic: #3a4452; --plastic-edge: #9aa6b5;
+  --sheet: #6b7480; --fr4: #3f9c5f; --solder: #d5d9dd; --coax: #11141a;
+}
+
 .app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
 .toolbar .brand { font-weight: 700; }
 .toolbar .ver { color: var(--muted); font-size: 12px; }
@@ -345,3 +362,18 @@ tr.pinned td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .preview-tip { position: absolute; z-index: 3; pointer-events: none; max-width: 240px; padding: 5px 8px; font-size: 12px; line-height: 1.4; color: var(--fg); background: var(--chart-bg); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25); white-space: nowrap; }
 .preview-tip .tip-head { font-weight: 600; }
 .dim-bg { fill: var(--chart-bg); opacity: 0.85; }
+
+/* build steps with pictures */
+.steps li { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: start; }
+.steps li > :only-child { grid-column: 1 / -1; }
+.step-pic { display: block; width: 140px; height: 105px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); cursor: zoom-in; overflow: hidden; }
+.step-pic .step-svg { display: block; width: 100%; height: 100%; }
+.step-big { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.55); cursor: zoom-out; }
+.step-big figure { position: relative; margin: 0; width: min(560px, 94vw); padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35); }
+.step-big .step-svg { display: block; width: 100%; height: auto; }
+.step-big figcaption { margin-top: 8px; color: var(--fg); }
+.step-close { position: absolute; top: 6px; right: 6px; }
+@media (max-width: 600px) {
+  .steps li { grid-template-columns: minmax(0, 1fr); }
+  .step-pic { width: 100%; max-width: 320px; height: auto; aspect-ratio: 4 / 3; }
+}
