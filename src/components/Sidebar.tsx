@@ -10,6 +10,7 @@ import { MAX_BANDS } from "../lib/sanitize";
 import { affected } from "../lib/affects";
 import { setHover, useHover, type Hover } from "../hover";
 import { useEffect, useRef } from "react";
+import { AntennaIcon } from "./AntennaIcon";
 
 const ALL_PRESETS = [...BAND_PRESETS, ...WIDE_PRESETS];
 
@@ -87,8 +88,11 @@ export function AntennaPicker({ onPick }: { onPick?: () => void }) {
               {list.map((a) => (
                 <button key={a.id} className={"pick" + (a.id === type ? " on" : "")} aria-pressed={a.id === type}
                   onClick={() => { set({ type: a.id }); onPick?.(); }}>
-                  <span className="pick-name">{t(a.name)}</span>
-                  <span className="pick-sum">{t(a.summary)}</span>
+                  <AntennaIcon def={a} />
+                  <span className="pick-text">
+                    <span className="pick-name">{t(a.name)}</span>
+                    <span className="pick-sum">{t(a.summary)}</span>
+                  </span>
                 </button>
               ))}
             </div>
