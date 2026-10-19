@@ -257,7 +257,7 @@ const forkShape = (M: ManifoldToplevel, gap: number): Manifold => M.Manifold.cub
   .add(M.Manifold.cube([20, 14, 4]).translate([20, 0, 0]));
 
 /** One groove per frame along a (ρ, z) path (mm), centred on the wire: n copies round the axis. */
-function frameGrooves(M: ManifoldToplevel, path: Pt[], n: number, wireD: number): Manifold {
+export function frameGrooves(M: ManifoldToplevel, path: Pt[], n: number, wireD: number): Manifold {
   const one = M.Manifold.union(path.slice(1).map((q, i) => channel(M, [path[i][0], 0, path[i][1]], [q[0], 0, q[1]], wireD)));
   return M.Manifold.union(Array.from({ length: n }, (_, k) => one.rotate([0, 0, (360 * k) / n])));
 }
