@@ -105,7 +105,9 @@ export function Arrow({ d }: { d: string }) {
 export function Pliers({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
   return (
     <g transform={tf(x, y, rot)}>
+      <path d="M-95 -16 Q-50 -12 -12 -3" fill="none" stroke={FG} strokeWidth={9} strokeLinecap="round" />
       <path d="M-95 -16 Q-50 -12 -12 -3" fill="none" stroke="var(--coax)" strokeWidth={7} strokeLinecap="round" />
+      <path d="M-95 16 Q-50 12 -12 3" fill="none" stroke={FG} strokeWidth={9} strokeLinecap="round" />
       <path d="M-95 16 Q-50 12 -12 3" fill="none" stroke="var(--coax)" strokeWidth={7} strokeLinecap="round" />
       <circle cx={-10} cy={0} r={5} fill="var(--bolt)" stroke={FG} strokeWidth={1.2} />
       <path d="M-6 -4 L34 -1.5 L34 0 L-6 0 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
@@ -118,7 +120,9 @@ export function Pliers({ x, y, rot = 0 }: { x: number; y: number; rot?: number }
 export function Cutters({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
   return (
     <g transform={tf(x, y, rot)}>
+      <path d="M-90 -16 Q-45 -12 -10 -4" fill="none" stroke={FG} strokeWidth={9} strokeLinecap="round" />
       <path d="M-90 -16 Q-45 -12 -10 -4" fill="none" stroke="var(--coax)" strokeWidth={7} strokeLinecap="round" />
+      <path d="M-90 16 Q-45 12 -10 4" fill="none" stroke={FG} strokeWidth={9} strokeLinecap="round" />
       <path d="M-90 16 Q-45 12 -10 4" fill="none" stroke="var(--coax)" strokeWidth={7} strokeLinecap="round" />
       <path d="M-10 -8 Q8 -12 18 0 L-10 0 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
       <path d="M-10 8 Q8 12 18 0 L-10 0 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
@@ -188,7 +192,99 @@ export function Ruler({ x, y, len }: { x: number; y: number; len: number }) {
   );
 }
 
+/** A cordless drill seen from the side, bit tip at (x, y), bit along +x, handle below the body. */
+export function Drill({ x, y, rot = 0 }: { x: number; y: number; rot?: number }) {
+  return (
+    <g transform={tf(x, y, rot)}>
+      <rect x={-112} y={4} width={24} height={54} rx={6} fill="var(--coax)" stroke={FG} strokeWidth={1.2} />
+      <rect x={-126} y={-17} width={78} height={30} rx={8} fill="var(--coax)" stroke={FG} strokeWidth={1.2} />
+      <rect x={-50} y={-9} width={16} height={18} rx={2} fill="var(--bolt)" stroke={FG} strokeWidth={1} />
+      <path d="M-34 -2.5 L-4 -2.5 L0 0 L-4 2.5 L-34 2.5 Z" fill="var(--bolt)" stroke={FG} strokeWidth={1} strokeLinejoin="round" />
+    </g>
+  );
+}
+
+/** A green check mark (the result is right) centred at (x, y). */
+export function Check({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={tf(x, y)}>
+      <circle r={13} fill="var(--panel)" stroke="var(--ok)" strokeWidth={2} />
+      <path d="M-6 0 L-1.5 5 L7 -5" fill="none" stroke="var(--ok)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  );
+}
+
+/** Children clipped to a rectangle (a curve that slides inside a screen). */
+export function Clip({ x, y, w, h, children }: { x: number; y: number; w: number; h: number; children?: ReactNode }) {
+  const id = useSvgId("clip");
+  return (
+    <g>
+      <defs><clipPath id={id}><rect x={x} y={y} width={w} height={h} /></clipPath></defs>
+      <g clipPath={`url(#${id})`}>{children}</g>
+    </g>
+  );
+}
+
+/** A centre insulator seen from above: printed block, antenna wires out to both sides (terminals: see Terminals). */
+export function FeedBlock({ x, y, wires = [20, 300] }: { x: number; y: number; wires?: [number, number] }) {
+  return (
+    <g>
+      <Plastic x={x - 38} y={y - 15} w={76} h={30} rx={6} />
+      <Wire d={`M${wires[0]} ${y} L${x - 20} ${y}`} />
+      <Wire d={`M${x + 20} ${y} L${wires[1]} ${y}`} />
+    </g>
+  );
+}
+
+/** The two screw terminals of a FeedBlock at (x ∓ 20, y); draw them after the leads so the leads go under the heads. */
+export function Terminals({ x, y, r = 6 }: { x: number; y: number; r?: number }) {
+  return <g><Bolt x={x - 20} y={y} r={r} head="hex" /><Bolt x={x + 20} y={y} r={r} head="hex" /></g>;
+}
+
+/** A solder joint (blob) at (x, y). */
+export function Joint({ x, y }: { x: number; y: number }) {
+  return <g><circle cx={x} cy={y} r={6} fill="var(--solder)" stroke={FG} strokeWidth={1} /></g>;
+}
+
+/** A small chart screen: frame and axes; children (curves) are clipped to it. */
+export function Screen({ x, y, w, h, children }: { x: number; y: number; w: number; h: number; children?: ReactNode }) {
+  return (
+    <g>
+      <rect x={x} y={y} width={w} height={h} rx={3} fill="var(--panel)" stroke={FG} strokeWidth={1.2} />
+      <path d={`M${x + 8} ${y + 6} L${x + 8} ${y + h - 8} L${x + w - 6} ${y + h - 8}`} fill="none" stroke="var(--muted)" strokeWidth={1} />
+      <Clip x={x + 1} y={y + 1} w={w - 2} h={h - 2}>{children}</Clip>
+    </g>
+  );
+}
+
+/**
+ * An SWR-style curve from x0 to x1: high at the edges (`top`), one smooth dip down to `bottom` at x = `at`.
+ * With `draw` it is revealed left to right between those loop fractions (see Draw).
+ */
+export function SwrCurve({ x0, x1, top, bottom, at, stroke = "var(--series-1)", draw }: { x0: number; x1: number; top: number; bottom: number; at: number; stroke?: string; draw?: [number, number] }) {
+  const d = `M${x0} ${top} C${at - 40} ${top} ${at - 16} ${bottom} ${at} ${bottom} C${at + 16} ${bottom} ${at + 40} ${top} ${x1} ${top}`;
+  if (draw) return <Draw d={d} times={draw} w={2} stroke={stroke} />;
+  return <g><path d={d} fill="none" stroke={stroke} strokeWidth={2} strokeLinecap="round" /></g>;
+}
+
+/** An antenna analyser / VNA: case with a screen (children go on the screen, clipped) and an RF port at the top right. */
+export function Analyser({ x, y, w = 130, h = 140, children }: { x: number; y: number; w?: number; h?: number; children?: ReactNode }) {
+  return (
+    <g>
+      <rect x={x + w - 26} y={y - 10} width={14} height={12} fill="var(--solder)" stroke={FG} strokeWidth={1} />
+      <rect x={x} y={y} width={w} height={h} rx={10} fill="var(--coax)" stroke={FG} strokeWidth={1.5} />
+      <Screen x={x + 10} y={y + 12} w={w - 20} h={h * 0.55}>{children}</Screen>
+      {[0, 1, 2].map((i) => <circle key={i} cx={x + w * (0.3 + 0.2 * i)} cy={y + h * 0.83} r={6} fill="var(--bolt)" stroke={FG} strokeWidth={1} />)}
+    </g>
+  );
+}
+
 // ---------- animated helpers (all read the scene's dur) ----------
+
+/** Fade the children in at loop fraction `a` and keep them to the end of the loop. */
+export function Appear({ a, children }: { a: number; children?: ReactNode }) {
+  return <Fade values={[0, 0, 1, 1]} times={[0, a, a + 0.04, 1]}>{children}</Fade>;
+}
 
 /** Rotate the children about a point: `values` in degrees at `times` (fractions 0…1 of the loop). */
 export function Rot({ about, values, times, children }: { about: [number, number]; values: number[]; times: number[]; children?: ReactNode }) {

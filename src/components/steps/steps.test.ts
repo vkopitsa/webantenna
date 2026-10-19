@@ -109,4 +109,9 @@ describe("StepList", () => {
     const html = renderToStaticMarkup(createElement(StepList, { items: [{ s: "Unmapped step text." }] }));
     expect(html).toBe('<ol class="notes steps"><li><span>Unmapped step text.</span></li></ol>');
   });
+  it("a row with a picture gets has-pic and the picture placeholder before its text", () => {
+    const html = renderToStaticMarkup(createElement(StepList, { items: [{ s: STEP_TEXT.common.measure }] }));
+    expect(STEP_PICS[STEP_TEXT.common.measure]).toBe("measure");
+    expect(html).toContain('<li class="has-pic"><div class="step-pic"></div><span>');
+  });
 });
