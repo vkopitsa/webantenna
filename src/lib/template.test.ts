@@ -36,6 +36,11 @@ describe("bend recipe in the templates", () => {
     expect(rs[0].bends).toHaveLength(4);
     expect(texts(buildSheetPages(def, p, d, "t")).some((x) => x.startsWith("B1 "))).toBe(true);
   });
+  it("the build sheet gives the marks (arc ends), not the arc starts", () => {
+    const { def, p, d } = build("biquad");
+    const b = bendRecipes(def, p, d)[0].bends[0], s = texts(buildSheetPages(def, p, d, "t")).join(" ");
+    expect(s).toContain(`B1 ${(b.mark * 1e3).toFixed(1)} mm`);
+  });
   it("the B marks sit at the recipe positions and every primitive stays inside its drawing", () => {
     for (const [id, extra] of [["biquad", {}], ["quad", { bands: "430e6-440e6" }], ["moxon", {}], ["cloverleaf", {}]] as [string, Params][]) {
       const { def, p, d } = build(id, extra);
@@ -45,7 +50,7 @@ describe("bend recipe in the templates", () => {
         const r = rs[ds.indexOf(dr)];
         const ticks = dr.prims.filter((q) => q.k === "line" && q.w === 0.5 && q.x1 === q.x2).map((q) => (q as { x1: number }).x1 - 10);
         expect(ticks.length).toBe(r.bends.length);
-        r.bends.forEach((b, i) => expect(ticks[i]).toBeCloseTo(b.at * 1e3, 6));
+        r.bends.forEach((b, i) => expect(ticks[i]).toBeCloseTo(b.mark * 1e3, 6));
         for (const q of dr.prims) {
           const xs = q.k === "line" ? [q.x1, q.x2] : q.k === "poly" ? q.pts.map((x) => x[0]) : q.k === "text" ? [q.x] : [];
           const ys = q.k === "line" ? [q.y1, q.y2] : q.k === "poly" ? q.pts.map((x) => x[1]) : q.k === "text" ? [q.y] : [];

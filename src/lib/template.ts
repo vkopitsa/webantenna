@@ -131,14 +131,14 @@ export function recipeDrawings(rs: Recipe[]): Drawing[] {
     // labels of marks closer than 11 mm go to another level, so they do not overlap
     const lastX: number[] = [];
     r.bends.forEach((b, i) => {
-      const x = P + b.at * 1e3;
+      const x = P + b.mark * 1e3;
       let lv = lastX.findIndex((lx) => x - lx >= 11);
       if (lv < 0) lv = lastX.length < 4 ? lastX.length : lastX.indexOf(Math.min(...lastX));
       lastX[lv] = x;
       const dy = lv * 6;
       prims.push({ k: "line", x1: x, y1: y0 - 6, x2: x, y2: y0 + 6, w: 0.5 },
         { k: "text", x, y: y0 - 9 - dy, s: `B${i + 1}`, size: 3, bold: true, anchor: "middle" },
-        { k: "text", x, y: y0 + 10 + dy, s: `${dMm(b.at)} mm`, size: 2.4, anchor: "middle" },
+        { k: "text", x, y: y0 + 10 + dy, s: `${dMm(b.mark)} mm`, size: 2.4, anchor: "middle" },
         { k: "text", x, y: y0 + 13 + dy, s: `${Math.round(b.angle)}° ${b.dir}${b.short ? " (short)" : ""}`, size: 2.4, bold: true, anchor: "middle" });
     });
     // the flat shape, small, below the labels
@@ -543,7 +543,7 @@ const mmS = lenEn;
 
 /** "B1 31 mm 90° L; B2 ...; die M4 bolt" for the build sheet. */
 function recipeBends(r: Recipe): string {
-  const b = r.bends.map((x, i) => `B${i + 1} ${mmS(x.at)} ${Math.round(x.angle)}° ${x.dir}${x.short ? " (short)" : ""}`).join("; ") || "straight";
+  const b = r.bends.map((x, i) => `B${i + 1} ${mmS(x.mark)} ${Math.round(x.angle)}° ${x.dir}${x.short ? " (short)" : ""}`).join("; ") || "straight";
   return `${b}; ${dieText(r)}`;
 }
 

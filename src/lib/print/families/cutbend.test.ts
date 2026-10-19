@@ -28,6 +28,8 @@ describe("boardHoles", () => {
     expect(hs[0].n).toBe(1);
     expect(hs[0].qty).toBe(2);
     expect(hs[0].marks).toHaveLength(3);
+    const { p, d } = setup("biquad");
+    expect(hs[0].marks).toEqual(bendRecipes(ANTENNA_BY_ID.biquad, p, d)[0].bends.map((b) => b.mark));
   });
   it("ground plane at 1.3 GHz: the radials share one hole", () => {
     const hs = holesOf("groundplane", { bands: "1.25e9-1.35e9" });

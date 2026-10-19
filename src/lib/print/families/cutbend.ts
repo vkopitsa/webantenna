@@ -58,7 +58,7 @@ export const CUTBEND_HOWTO: { board: string[]; lever: string[]; plate: string[] 
   ],
 };
 
-export interface Hole { n: number; cut: number; dia: number; qty: number; what: Msg; marks: number[] }   // m; marks = recipe bend `at`s
+export interface Hole { n: number; cut: number; dia: number; qty: number; what: Msg; marks: number[] }   // m; marks = recipe bend marks (arc ends)
 
 const MAX_CUT = 0.170;   // m: longest wire a board takes
 const SAME = 0.5e-3;     // m: lengths this close share one hole
@@ -78,7 +78,7 @@ export function boardHoles(rows: CutRow[], recipes: Recipe[]): Hole[] {
     const e = out.find((h) => Math.abs(h.cut - r.cut) <= SAME && Math.abs(h.dia - r.dia) <= SAME);
     if (e) { e.qty += r.qty; continue; }
     const ts = tags(r.tag), rc = recipes.find((q) => Math.abs(q.cut - r.cut) <= SAME && tags(q.tag).some((x) => ts.includes(x)));
-    out.push({ n: 0, cut: r.cut, dia: r.dia, qty: r.qty, what: r.what, marks: rc ? rc.bends.map((b) => b.at) : [] });
+    out.push({ n: 0, cut: r.cut, dia: r.dia, qty: r.qty, what: r.what, marks: rc ? rc.bends.map((b) => b.mark) : [] });
   }
   out.sort((a, b) => b.cut - a.cut);
   return out.map((h, i) => ({ ...h, n: i + 1 }));

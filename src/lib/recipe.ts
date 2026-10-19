@@ -6,8 +6,11 @@ import { D_MAX } from "./print/families/bend";
 
 /** The steel bolt that serves as the bending die (mm): r = bolt radius, hole = clearance hole in a printed part. */
 export interface Die { bolt: "M3" | "M4" | "M5" | "M6"; r: number; hole: number }
-/** A corner (turn > 20°): `at` = metres from the cut start to the start of the bend arc, `angle` the turn in degrees. */
-export interface Bend { at: number; angle: number; dir: "L" | "R"; short: boolean }
+/** A corner (turn > 20°): `at` = metres from the cut start to the start of the bend arc (geometry), `mark` = metres from
+ *  the cut start to the mark the builder puts on the die's tangent line: the end of the arc (at + Rc·θ), because both
+ *  benders hold the wire on the side away from the cut start and swing the cut-start end round the die (no die: the
+ *  corner, mark = at). `angle` is the turn in degrees. */
+export interface Bend { at: number; mark: number; angle: number; dir: "L" | "R"; short: boolean }
 /** A gentle run (turns ≤ 20°) from `from` to `to`, metres from the cut start; shaped by hand. */
 export interface Curve { from: number; to: number }
 export interface Recipe {
@@ -128,7 +131,7 @@ export function bendRecipes(def: AntennaDef, p: Params, d: Design, trimmed?: Set
       s += L(i - 1) - tan(i - 1) - tan(i);
       if (isCorner(i)) {
         const th = turn(i);
-        bends.push({ at: s / 1000, angle: th, dir: cross(i) > 0 ? "L" : "R", short: L(i - 1) < tan(i - 1) + tan(i) || L(i) < tan(i) + tan(i + 1) });
+        bends.push({ at: s / 1000, mark: (s + Rc * th * DEG) / 1000, angle: th, dir: cross(i) > 0 ? "L" : "R", short: L(i - 1) < tan(i - 1) + tan(i) || L(i) < tan(i) + tan(i + 1) });
         s += Rc * th * DEG;
         open = false;
       } else if (turn(i) > TURN_MIN) {

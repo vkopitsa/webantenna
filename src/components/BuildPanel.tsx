@@ -76,7 +76,7 @@ export function BuildPanel({ def, params, design }: { def: AntennaDef; params: P
               <thead><tr><th>{t("Piece")}</th><th className="num">{t("Diameter")}</th><th className="num">{t("Qty")}</th><th className="num">{t("Cut to")}</th><th>{t("Bends")}</th><th>{t("Die")}</th></tr></thead>
               <tbody>{recipes.map((r, i) => (
                 <tr key={i}><td>{r.tag || r.group}</td><td className="num">{fmtLen(r.dia, unit)}</td><td className="num">{r.qty}</td><td className="num"><b>{fmtLen(r.cut, unit)}</b></td>
-                  <td>{r.bends.map((b, k) => `B${k + 1} ${fmtLen(b.at, unit)} ${Math.round(b.angle)}° ${b.dir}${b.short ? ` (${t("short")})` : ""}`).join("; ")}</td>
+                  <td>{r.bends.map((b, k) => `B${k + 1} ${fmtLen(b.mark, unit)} ${Math.round(b.angle)}° ${b.dir}${b.short ? ` (${t("short")})` : ""}`).join("; ")}</td>
                   <td>{r.die ? t("{0} bolt", r.die.bolt) : t("by hand")}</td></tr>
               ))}</tbody>
             </table>

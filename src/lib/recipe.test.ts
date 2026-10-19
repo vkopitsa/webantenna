@@ -8,7 +8,10 @@ const build = (id: string, extra: Params = {}) => { const def = ANTENNA_BY_ID[id
 const recipes = (id: string, extra: Params = {}) => { const { def, p, d } = build(id, extra); return bendRecipes(def, p, d); };
 
 /** Walk the recipe as a turtle from (0,0) heading +x; returns the virtual corners (intersections of the straight runs).
- *  Gentle turns (curves) are followed as chords of the recipe's path; corners are placed by the bends' `at` marks. */
+ *  Gentle turns (curves) are followed as chords of the recipe's path. Corners are placed as the benders make them: the
+ *  wire is held in the groove on the side away from the cut start with the `mark` on the die's tangent line, and the free
+ *  end (towards the cut start) is swung round the die, so the arc forms between the cut start and the mark: it ends at
+ *  the mark and starts Rc·θ before it. */
 function rebuild(r: Recipe): P2[] {
   const Rc = r.die!.r + r.dia * 1000 / 2, q = r.path, n = q.length, m = r.closed ? n : n - 1, v = (i: number) => q[i % n];
   let x = 0, y = 0, h = 0, s = 0, prevT = 0, k = 0;
@@ -19,11 +22,12 @@ function rebuild(r: Recipe): P2[] {
     const th = Math.atan2(u[0] * w[1] - u[1] * w[0], u[0] * w[0] + u[1] * w[1]), deg = Math.abs(th) * 180 / Math.PI;
     if (deg > 20) {
       const bd = r.bends[k++], t = Rc * Math.tan(Math.abs(th) / 2);
-      go(bd.at * 1000 - s + t);                                      // the virtual corner
+      const arc0 = bd.mark * 1000 - Rc * Math.abs(th);               // the arc lies on the cut-start side of the mark
+      go(arc0 - s + t);                                              // the virtual corner
       out.push(bd.short ? [NaN, NaN] : [x, y]);
       h += bd.dir === "L" ? Math.abs(th) : -Math.abs(th);
       go(t);                                                         // end of the arc
-      s = bd.at * 1000 + Rc * Math.abs(th); prevT = t;
+      s = bd.mark * 1000; prevT = t;
     } else if (deg > 1) {
       const L = Math.hypot(...u) - prevT;
       go(L); s += L; h += th; prevT = 0;
@@ -127,12 +131,18 @@ describe("bendRecipes", () => {
     expect(rec.bends.every((b) => Number.isFinite(b.at) && b.at >= 0)).toBe(true);
   });
 
-  it("thick bent pieces still get numbers", () => {
+  it("thick bent pieces still get numbers; with no die the mark is the corner itself", () => {
     const rs = recipes("yagi");
     const r = rs.find((x) => x.closed)!;
     expect(r.die).toBeNull();
     expect(r.bends).toHaveLength(4);
     expect(r.bends[0].at).toBeGreaterThan(0);
+    for (const b of r.bends) expect(b.mark).toBe(b.at);
+  });
+
+  it("the mark is the end of the arc: at + Rc·θ", () => {
+    const r = recipes("biquad")[0], Rc = r.die!.r + r.dia * 1000 / 2;
+    for (const b of r.bends) expect((b.mark - b.at) * 1000).toBeCloseTo(Rc * b.angle * Math.PI / 180, 9);
   });
 
   it("skycone gets none", () => {
