@@ -80,9 +80,58 @@ export function bendRecipes(def: AntennaDef, p: Params, d: Design): Recipe[] {
   return out;
 }
 
+/** Bend marks and gentle curves of one flattened wire (mm): the shared core of the per-piece and the sky-cone frame recipes. */
+function recipeOf(f: { pts: P2[]; closed: boolean; d: number }, head: { tag: string; group: string; what: Msg; dia: number; cut: number }): Recipe {
+  const die = dieFor(f.d), Rc = die ? die.r + f.d / 2 : 0;
+  const n = f.pts.length, m = f.closed ? n : n - 1;   // vertices 0..m; for a closed loop vertex m is vertex 0 again
+  const v = (i: number) => f.pts[i % n];
+  const L = (k2: number) => Math.hypot(v(k2 + 1)[0] - v(k2)[0], v(k2 + 1)[1] - v(k2)[1]);
+  const cross = (i: number) => { const a = v(i - 1), b = v(i), c = v(i + 1); return (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); };
+  const turn = (i: number) => {   // degrees, interior vertices only (vertex 0 and m are the cut ends)
+    if (i <= 0 || i >= m) return 0;
+    const a = v(i - 1), b = v(i), c = v(i + 1), u = [b[0] - a[0], b[1] - a[1]], w = [c[0] - b[0], c[1] - b[1]];
+    return Math.acos(Math.max(-1, Math.min(1, (u[0] * w[0] + u[1] * w[1]) / (Math.hypot(...u) * Math.hypot(...w) || 1)))) / DEG;
+  };
+  const isCorner = (i: number) => turn(i) > CORNER;
+  const tan = (i: number) => (die && isCorner(i) ? Rc * Math.tan(turn(i) * DEG / 2) : 0);
+  const bends: Bend[] = [], curves: Curve[] = [];
+  let s = 0, open = false;
+  for (let i = 1; i <= m; i++) {
+    s += L(i - 1) - tan(i - 1) - tan(i);
+    if (isCorner(i)) {
+      const th = turn(i);
+      bends.push({ at: s / 1000, mark: (s + Rc * th * DEG) / 1000, angle: th, dir: cross(i) > 0 ? "L" : "R", short: L(i - 1) < tan(i - 1) + tan(i) || L(i) < tan(i) + tan(i + 1) });
+      s += Rc * th * DEG;
+      open = false;
+    } else if (turn(i) > TURN_MIN) {
+      if (open) curves[curves.length - 1].to = s / 1000;
+      else curves.push({ from: s / 1000, to: s / 1000 });
+      open = true;
+    } else open = false;
+  }
+  return { ...head, qty: 1, length: s / 1000, closed: f.closed, die, bends, curves, path: f.pts };
+}
+
+/** Wire cages (Design.cuts + frames): the hot and ground frame of each side, bent from the (ρ, z) profile; hoops and coiled
+ *  shorting wires are rings and 3D coils, which get no recipe. */
+function frameRecipes(d: Design, rows: ReturnType<typeof cutList>): Recipe[] {
+  const out: Recipe[] = [];
+  for (const [side, tag, prefix] of [["hot", "H", "Hot frame"], ["ground", "G", "Ground frame"]] as const) {
+    const row = rows.find((r) => r.what.s.startsWith(prefix));
+    const pts = d.frames![side].map(([r, z]) => [r * 1000, z * 1000] as P2);
+    if (!row || pts.length < 2) continue;
+    const rc = recipeOf({ pts, closed: false, d: row.dia * 1000 }, { tag, group: side === "hot" ? "driven" : "ground", what: row.what, dia: row.dia, cut: row.cut });
+    rc.qty = row.qty;
+    out.push(rc);
+  }
+  return out;
+}
+
 function recipesOf(def: AntennaDef, p: Params, d: Design): Recipe[] {
-  // sky-cone types have their own kit; d.cuts replaces the wire pieces by a table, and printed antennas have no bent wire
-  if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
+  // printed antennas have no bent wire; a sky-cone with sheets only has no wire pieces
+  if (d.pcb || (def.id.startsWith("skycone") && !d.cuts)) return [];
+  // d.cuts replaces the wire pieces by a table (wire cages: their frames are bent from d.frames)
+  if (d.cuts) return d.frames ? frameRecipes(d, cutList(def, d, new Set())) : [];
   const bps = bendPaths(d);
   if (!bps.length) return [];
   const pcs = pieces(d), rows = cutList(def, d, trimmedTags(def, p, d));
@@ -101,35 +150,8 @@ function recipesOf(def: AntennaDef, p: Params, d: Design): Recipe[] {
       if (pc.tag && !tags.includes(pc.tag)) out[k].tag = `${tags[0]}–${pc.tag}`;
       continue;
     }
-    const die = dieFor(f.d), Rc = die ? die.r + f.d / 2 : 0;
-    const n = f.pts.length, m = f.closed ? n : n - 1;   // vertices 0..m; for a closed loop vertex m is vertex 0 again
-    const v = (i: number) => f.pts[i % n];
-    const L = (k2: number) => Math.hypot(v(k2 + 1)[0] - v(k2)[0], v(k2 + 1)[1] - v(k2)[1]);
-    const cross = (i: number) => { const a = v(i - 1), b = v(i), c = v(i + 1); return (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); };
-    const turn = (i: number) => {   // degrees, interior vertices only (vertex 0 and m are the cut ends)
-      if (i <= 0 || i >= m) return 0;
-      const a = v(i - 1), b = v(i), c = v(i + 1), u = [b[0] - a[0], b[1] - a[1]], w = [c[0] - b[0], c[1] - b[1]];
-      return Math.acos(Math.max(-1, Math.min(1, (u[0] * w[0] + u[1] * w[1]) / (Math.hypot(...u) * Math.hypot(...w) || 1)))) / DEG;
-    };
-    const isCorner = (i: number) => turn(i) > CORNER;
-    const tan = (i: number) => (die && isCorner(i) ? Rc * Math.tan(turn(i) * DEG / 2) : 0);
-    const bends: Bend[] = [], curves: Curve[] = [];
-    let s = 0, open = false;
-    for (let i = 1; i <= m; i++) {
-      s += L(i - 1) - tan(i - 1) - tan(i);
-      if (isCorner(i)) {
-        const th = turn(i);
-        bends.push({ at: s / 1000, mark: (s + Rc * th * DEG) / 1000, angle: th, dir: cross(i) > 0 ? "L" : "R", short: L(i - 1) < tan(i - 1) + tan(i) || L(i) < tan(i) + tan(i + 1) });
-        s += Rc * th * DEG;
-        open = false;
-      } else if (turn(i) > TURN_MIN) {
-        if (open) curves[curves.length - 1].to = s / 1000;
-        else curves.push({ from: s / 1000, to: s / 1000 });
-        open = true;
-      } else open = false;
-    }
     sigs.push(sig);
-    out.push({ tag: pc.tag, group: bp.group, what: row?.what ?? { s: cutWhat(pc, def), a: [] }, dia: pc.dia, qty: 1, cut: cutLen, length: s / 1000, closed: f.closed, die, bends, curves, path: f.pts });
+    out.push(recipeOf(f, { tag: pc.tag, group: bp.group, what: row?.what ?? { s: cutWhat(pc, def), a: [] }, dia: pc.dia, cut: cutLen }));
   }
   return out;
 }

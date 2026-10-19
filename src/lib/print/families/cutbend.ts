@@ -77,7 +77,8 @@ export function boardHoles(rows: CutRow[], recipes: Recipe[]): Hole[] {
     if (r.cut > MAX_CUT + 1e-9 || mm(r.dia) > D_MAX + 1e-9) continue;
     const e = out.find((h) => Math.abs(h.cut - r.cut) <= SAME && Math.abs(h.dia - r.dia) <= SAME);
     if (e) { e.qty += r.qty; continue; }
-    const ts = tags(r.tag), rc = recipes.find((q) => Math.abs(q.cut - r.cut) <= SAME && tags(q.tag).some((x) => ts.includes(x)));
+    // a cut table without tags (wire cages) matches the recipe by the piece's name
+    const ts = tags(r.tag), rc = recipes.find((q) => Math.abs(q.cut - r.cut) <= SAME && (ts.length ? tags(q.tag).some((x) => ts.includes(x)) : q.what.s === r.what.s));
     out.push({ n: 0, cut: r.cut, dia: r.dia, qty: r.qty, what: r.what, marks: rc ? rc.bends.map((b) => b.mark) : [] });
   }
   out.sort((a, b) => b.cut - a.cut);
@@ -258,20 +259,21 @@ function plate(M: M, g: BenderGeom): Manifold {
 const CACHE = new WeakMap<Design, PartSpec[]>();
 
 /** Cut board(s) for the straight and bent pieces ≤ 170 mm, plus one lever bender and one bending plate per die bolt among
- *  the bent pieces of wire ≤ D_MAX; [] for sky-cone types (their own kit) and printed antennas. Memoised per Design:
+ *  the bent pieces of wire ≤ D_MAX (sky-cone wire cages: their frames, beside their own kit); [] for printed antennas and sheet sky-cones. Memoised per Design:
  *  the tuning (one rebuild of the design, shared with bendRecipes) runs once, and not at all when nothing can qualify. */
 export function cutBendParts(def: AntennaDef, p: Params, d: Design): PartSpec[] {
-  if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
+  if (d.pcb || (def.id.startsWith("skycone") && !d.cuts)) return [];
   const hit = CACHE.get(d);
   if (hit) return hit;
   // nothing to bend and no cut-list piece short and thin enough for a board (the cut is never shorter than the piece): skip the tuning
   const onBoard = (q: Piece) => q.group !== "feed" && !(q.mech && q.length < 5e-3) && q.length <= MAX_CUT + 1e-9 && mm(q.dia) <= D_MAX + 1e-9;
-  if (!bendPaths(d).length && !pieces(d).some(onBoard)) {
+  const fits = d.cuts ? d.cuts.some((c) => c.length <= MAX_CUT + 1e-9 && mm(c.dia) <= D_MAX + 1e-9) : pieces(d).some(onBoard);
+  if (!(d.cuts ? d.frames : bendPaths(d).length) && !fits) {
     CACHE.set(d, []);
     return [];
   }
   const recipes = bendRecipes(def, p, d);
-  const holes = boardHoles(cutList(def, d, trimmedTags(def, p, d)), recipes);
+  const holes = boardHoles(cutList(def, d, d.cuts ? new Set() : trimmedTags(def, p, d)), recipes);
   const out = holes.length ? cutBoards(holes) : [];
   const bent = recipes.filter((r) => r.die && r.bends.length);
   for (const bolt of [...new Set(bent.map((r) => r.die!.bolt))].sort()) {

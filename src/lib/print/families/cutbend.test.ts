@@ -161,7 +161,8 @@ describe("benders", () => {
     expect(quad.some((s) => s.startsWith("bender-plate-"))).toBe(true);
     expect(ids("yagi")).toEqual([]);
     expect(ids("dipole", { bands: "2.4e9-2.5e9" })).toEqual(["cut-board"]);
-    expect(ids("skyconecage")).toEqual([]);
+    expect(ids("skyconecage")).toEqual(["cut-board", "bender-lever-m3", "bender-plate-m3"]);
+    expect(ids("skycone7")).toEqual([]);
     expect(ids("quad").some((s) => s.startsWith("cut-board"))).toBe(false);
     const { p, d } = setup("quad", { bands: "2.4e9-2.5e9" });
     expect(partsFor("quad", p, d).map((s) => s.id)).toEqual(expect.arrayContaining(quad));
@@ -225,5 +226,28 @@ describe("partsFor stays cheap", () => {
       partsFor("quad", p, d);
       expect(spy.mock.calls.length).toBe(0);
     } finally { spy.mockRestore(); }
+  });
+});
+
+describe("sky-cone wire cages", () => {
+  const ids = (id: string) => { const { p, d } = setup(id); return partsFor(id, p, d).map((s) => s.id); };
+  it("cages get a cut board and the M3 benders beside their own kit", () => {
+    for (const id of ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55"]) {
+      const l = ids(id);
+      expect(l, id).toEqual(expect.arrayContaining(["cut-board", "bender-lever-m3", "bender-plate-m3", "skycone-bend", "skycone-hoops", "skycone-cradle"]));
+    }
+  });
+  it("the board holds the frames with their bend marks, the shorting wires and the short hoops; the A55 coils are cut straight", () => {
+    const { p, d } = setup("skyconecage55"), def = ANTENNA_BY_ID.skyconecage55;
+    const hs = boardHoles(buildPack(def, p, d).cuts, bendRecipes(def, p, d));
+    expect(hs.find((h) => h.what.s.startsWith("Hot frame"))!.marks.length).toBe(bendRecipes(def, p, d)[0].bends.length);
+    expect(hs.some((h) => h.what.s.startsWith("Shorting wire") && h.qty === 2)).toBe(true);
+    expect(hs.every((h) => h.cut <= 0.17 + 1e-9)).toBe(true);
+  });
+  it("S40 (sheet + one shorting wire): board only; the sheet cones (skycone7) get nothing", () => {
+    const l = ids("skycone40");
+    expect(l).toContain("cut-board");
+    expect(l.some((x) => x.startsWith("bender"))).toBe(false);
+    expect(ids("skycone7").some((x) => x.startsWith("cut-board") || x.startsWith("bender"))).toBe(false);
   });
 });

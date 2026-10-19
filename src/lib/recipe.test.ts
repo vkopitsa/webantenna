@@ -154,8 +154,22 @@ describe("bendRecipes", () => {
     expect(recipes("biquad")[0].what.s).toBe("Driven element");
   });
 
-  it("skycone gets none", () => {
-    expect(recipes("skyconecage")).toEqual([]);
+  it("sky-cone wire cages: one recipe per frame, from Design.frames; sheets, hoops and coils get none", () => {
+    for (const id of ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55"]) {
+      const { def, p, d } = build(id), rs = recipes(id), cuts = buildPack(def, p, d).cuts;
+      expect(rs.map((r) => r.tag), id).toEqual(["H", "G"]);
+      for (const r of rs) {
+        const row = cuts.find((c) => c.what.s === r.what.s)!;
+        expect(r.cut).toBeCloseTo(row.cut, 9);
+        expect(r.qty).toBe(row.qty);
+        expect(r.bends.length, `${id} ${r.tag}`).toBeGreaterThan(0);
+        expect(r.die?.bolt).toBe("M3");
+        expect(r.length).toBeLessThanOrEqual(r.cut + 1e-9);
+      }
+    }
+    expect(recipes("skyconecage55").some((r) => /hoop|short/i.test(r.what.s))).toBe(false);   // coiled shorting wires: no recipe
+    expect(recipes("skycone7")).toEqual([]);
+    expect(recipes("skycone40")).toEqual([]);
   });
 
   it("identical pieces merge", () => {
