@@ -113,18 +113,19 @@ function wireDrawing(def: AntennaDef, d: Design): Drawing | null {
 const dMm = (m: number) => `${+(m * 1e3).toFixed(2)}`;
 const dieText = (r: Recipe) => (r.die ? `die: ${r.die.bolt} bolt` : "no bolt die (wire too thick), bend by hand");
 
-/** One 1:1 strip per bent piece: the cut wire laid along it, a red mark at every bend, the flat shape in the corner.
- *  A piece whose strip would need more than 6 A4 tiles gets none (the recipe table has it). */
+/** One 1:1 strip per bent piece: the cut wire laid along it, a mark at every bend, a grey band over every gentle curve,
+ *  the flat shape in the corner. A piece whose strip would need more than 6 A4 tiles gets none (the recipe table has it). */
 export function recipeDrawings(rs: Recipe[]): Drawing[] {
   const out: Drawing[] = [];
   for (const r of rs) {
-    if (!r.bends.length) continue;
+    if (!r.bends.length && !r.curves.length) continue;
     const L = Math.max(r.cut, r.length) * 1e3, P = 10;   // the strip also covers bends the recipe puts beyond the cut length
     const y0 = 30, oy = 66, PH = 28, H = oy + PH + 8;
     const w = L + 2 * P;
     if (Math.min(tiles(w, H), tiles(H, w)) > 6) continue;
     const prims: Prim[] = [];
-    // wire at its diameter, cut ticks at both ends
+    // gentle curves as grey bands under the wire, the wire at its diameter, cut ticks at both ends
+    for (const c of r.curves) prims.push({ k: "rect", x: P + c.from * 1e3, y: y0 - 3, w: Math.max((c.to - c.from) * 1e3, 0.5), h: 6, fill: true, grey: true });
     prims.push({ k: "line", x1: P, y1: y0, x2: P + L, y2: y0, w: Math.max(r.dia * 1e3, 0.3), grey: true });
     for (const x of [P, P + r.cut * 1e3]) prims.push({ k: "line", x1: x, y1: y0 - 5, x2: x, y2: y0 + 5, w: 0.4 });
     prims.push({ k: "text", x: P, y: y0 - 7, s: "cut 0", size: 2.4, grey: true }, { k: "text", x: P + r.cut * 1e3, y: y0 - 7, s: `cut ${dMm(r.cut)} mm`, size: 2.4, grey: true, anchor: "end" });
@@ -146,14 +147,18 @@ export function recipeDrawings(rs: Recipe[]): Drawing[] {
     const x1 = Math.min(...xs), y1 = Math.min(...ys), bw = Math.max(...xs) - x1 || 1, bh = Math.max(...ys) - y1 || 1;
     const sc = Math.min(1, 60 / bw, PH / bh);
     const pts = r.path.map((q): [number, number] => [P + (q[0] - x1) * sc, oy + (bh - (q[1] - y1)) * sc]);
-    prims.push({ k: "poly", pts, closed: r.closed, lw: 0.4 }, { k: "text", x: P, y: oy + bh * sc + 5, s: "shape, not to scale", size: 2.2, grey: true });
-    out.push({ w, h: H, prims, caption: `${r.tag ? r.tag + " " : ""}bend strip, 1:1 - Ø${dMm(r.dia)} mm wire, ${dieText(r)}, qty ${r.qty}` });
+    const [cx, cy] = pts[0], right = cx > w / 2;   // the cut end (where the strip's 0 is)
+    prims.push({ k: "poly", pts, closed: r.closed, lw: 0.4 }, { k: "circle", cx, cy, r: 0.9, fill: true },
+      { k: "text", x: right ? cx - 2 : cx + 2, y: cy - 1.5, s: "cut end", size: 2.2, anchor: right ? "end" : "start" },
+      { k: "text", x: P, y: oy + bh * sc + 5, s: "shape, not to scale", size: 2.2, grey: true });
+    const curve = r.curves.length ? ", grey band: gentle curve, shape it by hand" : "";
+    out.push({ w, h: H, prims, caption: `${r.tag ? r.tag + " " : ""}bend strip, 1:1 - Ø${dMm(r.dia)} mm wire, ${dieText(r)}, qty ${r.qty}${curve}` });
   }
   return out;
 }
 
 const RECIPE_TITLE = (name: string) => `${name}: 1:1 bend strips`;
-const RECIPE_SUB = "Cut the wire to the length on the strip. Lay it on the strip with the freshly cut end at 0 and mark every bend. B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing. Check the scale bar before you cut.";
+const RECIPE_SUB = "Cut the wire to the length on the strip. Lay it on the strip with the freshly cut end at 0 and mark every bend. B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing: on the bender, bend R with the wire lying as drawn and L with it turned over, and turn it over only when the letter changes from the previous bend. Check the scale bar before you cut.";
 
 // ---------------------------------------------------------------- wire-cage frames
 
@@ -540,11 +545,14 @@ class Flow {
 }
 
 const mmS = lenEn;
+// the Build panel shows the same text, translated (BuildPanel.tsx)
+const RECIPE_HINT = "B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing: on the bender, bend R with the wire lying as drawn and L with it turned over, and turn it over only when the letter changes from the previous bend. The die is a steel bolt of the size given.";
 
-/** "B1 31 mm 90° L; B2 ...; die M4 bolt" for the build sheet. */
+/** "B1 31 mm 90° L; B2 ...; gentle curve from ... to ...; die M4 bolt" for the build sheet. */
 function recipeBends(r: Recipe): string {
-  const b = r.bends.map((x, i) => `B${i + 1} ${mmS(x.mark)} ${Math.round(x.angle)}° ${x.dir}${x.short ? " (short)" : ""}`).join("; ") || "straight";
-  return `${b}; ${dieText(r)}`;
+  const b = r.bends.map((x, i) => `B${i + 1} ${mmS(x.mark)} ${Math.round(x.angle)}° ${x.dir}${x.short ? " (run too short for the die: bend with pliers)" : ""}`);
+  const c = r.curves.map((x) => `gentle curve from ${mmS(x.from)} to ${mmS(x.to)}: shape it by hand or on the groove plate`);
+  return `${[...b, ...c].join("; ") || "straight"}; ${dieText(r)}`;
 }
 
 export function buildSheetPages(def: AntennaDef, p: Params, d: Design, version: string): Page[] {
@@ -560,12 +568,12 @@ export function buildSheetPages(def: AntennaDef, p: Params, d: Design, version: 
     F.table([40, 16, 12, 30, 30, 18, 40], ["Part", "Tag", "Qty", "Length", "Cut to", "Dia.", "Note"],
       pack.cuts.map((c) => [t(c.what), c.tag, String(c.qty), mmS(c.length), mmS(c.cut), mmS(c.dia), c.note ? t(c.note) : ""]), [false, false, true, true, true, true, false]);
   }
-  const recipes = bendRecipes(def, p, d).filter((r) => r.bends.length);
+  const recipes = bendRecipes(def, p, d).filter((r) => r.bends.length || r.curves.length);
   if (recipes.length) {
     F.heading("Bend recipe");
-    F.para("B1 is the mark nearest the cut end: bend in order from that end. L or R is the direction the wire turns, looking at the drawing. The die is a steel bolt of the size given.");
+    F.para(RECIPE_HINT);
     F.table([34, 14, 12, 26, 100], ["Piece", "Dia.", "Qty", "Cut to", "Bends and die"],
-      recipes.map((r) => [r.tag || r.group, mmS(r.dia), String(r.qty), mmS(r.cut), recipeBends(r)]), [false, true, true, true, false]);
+      recipes.map((r) => [`${t(r.what)}${r.tag ? ` (${r.tag})` : ""}`, mmS(r.dia), String(r.qty), mmS(r.cut), recipeBends(r)]), [false, true, true, true, false]);
   }
   F.heading("Tuning");
   if (pack.tune.length) {

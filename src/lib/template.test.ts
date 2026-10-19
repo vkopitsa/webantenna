@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ANTENNA_BY_ID } from "./antennas";
-import type { Params } from "./types";
+import type { Params, Vec3 } from "./types";
 import { buildSheetPages, buildPackPDF, recipeDrawings, templateKind, templatePages, templateSVG } from "./template";
 import { bendRecipes } from "./recipe";
 import type { Page } from "./drawing";
@@ -59,6 +59,29 @@ describe("bend recipe in the templates", () => {
         }
       }
     }
+  });
+  it("cloverleaf: the gentle curve is in the build sheet and shaded on the strip", () => {
+    const { def, p, d } = build("cloverleaf");
+    const r = bendRecipes(def, p, d).find((x) => x.curves.length)!, c = r.curves[0];
+    expect(texts(buildSheetPages(def, p, d, "t")).join(" ")).toContain("gentle curve from");
+    const dr = recipeDrawings([r])[0];
+    const span = dr.prims.find((q) => q.k === "rect" && q.fill && q.grey) as { x: number; w: number } | undefined;
+    expect(span).toBeDefined();
+    expect(span!.x - 10).toBeCloseTo(c.from * 1e3, 6);
+    expect(span!.x + span!.w - 10).toBeCloseTo(c.to * 1e3, 6);
+  });
+  it("the shape sketch marks the cut end", () => {
+    const { def, p, d } = build("biquad");
+    const dr = recipeDrawings(bendRecipes(def, p, d))[0];
+    expect(dr.prims.some((q) => q.k === "text" && q.s === "cut end")).toBe(true);
+    expect(dr.prims.some((q) => q.k === "circle" && q.fill)).toBe(true);
+  });
+  it("short runs are spelled out in the build sheet", () => {
+    const { def, p } = build("dipole");
+    const r = 1e-3, w = (a: Vec3, b: Vec3) => ({ a, b, r, group: "driven" as const });
+    const d = { ...def.build(p), wires: [w([0, 0, 0.05], [0, 0, 0]), w([0, 0, 0], [0.003, 0, 0]), w([0.003, 0, 0], [0.003, 0, 0.05])], feed: undefined };
+    const s = texts(buildSheetPages(def, p, d, "t")).join(" ");
+    expect(s).toContain("run too short for the die: bend with pliers");
   });
   it("biquad PDF builds", () => {
     const { def, p, d } = build("biquad");

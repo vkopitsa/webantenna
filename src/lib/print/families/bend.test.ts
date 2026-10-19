@@ -47,6 +47,12 @@ describe("bend plate", () => {
     expect(segs).toHaveLength(1);
     probe(segs[0], f, "biquad");
   });
+  it("biquad: the plate's count and length are the cut list's (two halves of the loop)", () => {
+    const { p, d } = setup("biquad"), [row] = buildPack(ANTENNA_BY_ID.biquad, p, d).cuts, [ps] = plates("biquad");
+    expect(ps.purpose.s).toBe(BEND_STRINGS[1]);
+    expect(ps.purpose.a![0]).toBe(row.qty);
+    expect((ps.purpose.a![2] as { len: number }).len).toBeCloseTo(row.length, 6);
+  });
   it.each([["3", 3], ["4", 4]])("cloverleaf %s leaves: one plate for all leaves, both hands", (leaves, n) => {
     const ps = plates("cloverleaf", { leaves });
     expect(ps).toHaveLength(1);

@@ -1,4 +1,5 @@
 import type { Design } from "../types";
+import type { Piece } from "../build";
 import { CLEAR, mm } from "./rules";
 import type { V3 } from "./shapes";
 
@@ -168,4 +169,37 @@ export function signature(f: Flat): string {
     for (let k = 0; k < r; k++) vs.push([...s.slice(k), ...s.slice(0, k)].join(","));
   }
   return `${f.closed ? "c" : "o"}${Math.round(f.d * 100)}|${vs.reduce((a, b) => (b < a ? b : a))}`;
+}
+
+/** A bend path cut wherever consecutive wires belong to different cut-list pieces, so every part is one physical wire
+ *  (a biquad's loop is two halves that meet at the feed). Segments are matched to wires by their end points. */
+export function splitByPiece(bp: BendPath, d: Design, pcs: Piece[]): BendPath[] {
+  const n = bp.pts.length, m = bp.closed ? n : n - 1;
+  const near = (a: V3, c: number[]) => Math.hypot(a[0] - c[0] * 1000, a[1] - c[1] * 1000, a[2] - c[2] * 1000) < 1e-3;
+  const owner = (i: number) => {
+    const a = bp.pts[i], b = bp.pts[(i + 1) % n];
+    const w = bp.wires.find((j) => (near(a, d.wires[j].a) && near(b, d.wires[j].b)) || (near(a, d.wires[j].b) && near(b, d.wires[j].a)));
+    return w == null ? -1 : pcs.findIndex((q) => q.wires.includes(w));
+  };
+  const own = Array.from({ length: m }, (_, i) => owner(i));
+  if (own.some((o) => o < 0)) return [bp];
+  let s0 = 0;
+  if (bp.closed) {
+    const k = own.findIndex((o, i) => o !== own[(i + m - 1) % m]);
+    if (k < 0) return [bp];
+    s0 = k;
+  } else if (own.every((o) => o === own[0])) return [bp];
+  const out: BendPath[] = [];
+  let run: number[] = [];
+  const flush = () => {
+    if (run.length > 1) out.push({ ...bp, closed: false, pts: [...run.map((i) => bp.pts[i]), bp.pts[(run[run.length - 1] + 1) % n]], wires: bp.wires.filter((j) => pcs[own[run[0]]].wires.includes(j)) });
+    run = [];
+  };
+  for (let t = 0; t < m; t++) {
+    const i = (s0 + t) % m;
+    if (run.length && own[i] !== own[run[run.length - 1]]) flush();
+    run.push(i);
+  }
+  flush();
+  return out;
 }

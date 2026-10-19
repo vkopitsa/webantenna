@@ -74,6 +74,15 @@ describe("cut board", () => {
       if (b.ok) for (const g of b.segments) expect(Math.max(...g.size)).toBeLessThanOrEqual(MAX_SIZE);
     }
   });
+  it("purpose counts the holes", () => {
+    expect(spec.purpose).toEqual(msg("Cut board: push the wire to the bottom of a hole and cut flush; {0} hole(s)", 1));
+  });
+  it("L/R: turn the wire over only when the letter changes", () => {
+    for (const steps of [CUTBEND_HOWTO.lever, CUTBEND_HOWTO.plate]) {
+      expect(steps.some((x) => x.includes("only when the letter changes"))).toBe(true);
+      expect(steps.some((x) => x.includes("before each bend marked L"))).toBe(false);
+    }
+  });
   it("describes every hole in the how-to", () => {
     expect(spec.howTo.some((m) => m.s === CUTBEND_STRINGS.find((s) => s.startsWith("Hole {0}")))).toBe(true);
     expect(CUTBEND_HOWTO.board.length).toBeGreaterThan(0);
@@ -112,6 +121,19 @@ describe("benders", () => {
       const post = M.Manifold.cylinder(4, head / 2 - 0.01, head / 2 - 0.01, 64).translate([s.c[0], s.c[1], 9]);
       expect(inside(post, lever.rotate([0, 0, 89]))).toBeLessThan(1e-6);
       expect(inside(post, lever.rotate([0, 0, 91]))).toBeGreaterThan(0);
+    }
+  });
+  it("lever bender: the roller bolt sits on a floor in the lever, ≥ 0.5 mm above the base and its nut pocket", () => {
+    for (const dMm of [0.5, 1.5, 2, 3]) {
+      const g = benderGeometry(dieFor(dMm)!, dMm, [90]), { base, lever } = leverSolids(M, g), r = g.die.r, [x, y] = g.roller;
+      // the bolt cannot drop below z = 8.5: the lever is solid under the hole, the hole is open above
+      const floor = M.Manifold.cylinder(0.5, r, r, 32).translate([x, y, 8]);
+      expect(inside(lever, floor), `floor d=${dMm}`).toBeGreaterThan(0.99 * floor.volume());
+      const bore = M.Manifold.cylinder(6, r, r, 32).translate([x, y, 10]);
+      expect(inside(lever, bore), `bore d=${dMm}`).toBeLessThan(1e-6);
+      // the lowest 0.5 mm of the bolt, swept round the die at every lever angle, stays clear of the base (and so of the nut pocket)
+      const tip = M.Manifold.cylinder(0.5, r, r, 32).translate([x, y, 8]);
+      for (let a = 0; a <= 180; a += 5) expect(inside(base, tip.rotate([0, 0, a])), `tip d=${dMm} ${a}°`).toBeLessThan(1e-6);
     }
   });
   it("plate: wire clears between die and trap bolt and through the groove", () => {
@@ -182,14 +204,25 @@ describe("no bend at a feed terminal", () => {
 });
 
 describe("partsFor stays cheap", () => {
-  it("5-band fan dipole: one rebuild of the design (the tuning) at most, none when asked again for the same design", () => {
+  it("5-band fan dipole: no bent wire and nothing short enough for a board, so no rebuild of the design at all", () => {
     const def = ANTENNA_BY_ID.fandipole, { p, d } = setup("fandipole", { bands: "3.5e6-3.8e6;7e6-7.2e6;10.1e6-10.15e6;14e6-14.35e6;18e6-18.2e6" });
     const spy = vi.spyOn(def, "build");
     try {
+      expect(bendRecipes(def, p, d)).toEqual([]);
+      expect(spy.mock.calls.length).toBe(0);
       partsFor("fandipole", p, d);
+      expect(spy.mock.calls.length).toBe(0);
+    } finally { spy.mockRestore(); }
+  });
+  it("bendRecipes is memoised per design: the tuning runs once for BuildPanel, templates and parts together", () => {
+    const def = ANTENNA_BY_ID.quad, { p, d } = setup("quad", { bands: "2.4e9-2.5e9" });
+    const spy = vi.spyOn(def, "build");
+    try {
+      const a = bendRecipes(def, p, d);
       expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
       spy.mockClear();
-      partsFor("fandipole", p, d);
+      expect(bendRecipes(def, p, d)).toBe(a);
+      partsFor("quad", p, d);
       expect(spy.mock.calls.length).toBe(0);
     } finally { spy.mockRestore(); }
   });

@@ -1,6 +1,6 @@
 import type { AntennaDef, Design, Params } from "./types";
-import { cutList, pieces, tuning, type Piece } from "./build";
-import { bendPaths, CORNER, flatten, signature, type BendPath, type P2 } from "./print/paths";
+import { cutList, cutWhat, pieces, tuning, type Msg } from "./build";
+import { bendPaths, CORNER, flatten, signature, splitByPiece, type BendPath, type P2 } from "./print/paths";
 import type { V3 } from "./print/shapes";
 import { D_MAX } from "./print/families/bend";
 
@@ -15,6 +15,7 @@ export interface Bend { at: number; mark: number; angle: number; dir: "L" | "R";
 export interface Curve { from: number; to: number }
 export interface Recipe {
   tag: string; group: string; dia: number; qty: number;    // dia m
+  what: Msg;                                               // the piece, as the cut list names it
   cut: number; length: number;                             // m: cut-list length, developed (filleted) length
   closed: boolean; die: Die | null; bends: Bend[]; curves: Curve[];
   path: P2[];                                              // mm, flattened design path from the start point, for drawing
@@ -58,48 +59,35 @@ function startAtFeed(bp: BendPath, d: Design): BendPath {
   return { ...bp, pts };
 }
 
-/** A bend path cut wherever consecutive wires belong to different cut-list pieces, so every part is one physical wire
- *  (a biquad's loop is two halves that meet at the feed). Segments are matched to wires by their end points. */
-function splitByPiece(bp: BendPath, d: Design, pcs: Piece[]): BendPath[] {
-  const n = bp.pts.length, m = bp.closed ? n : n - 1;
-  const near = (a: V3, c: number[]) => Math.hypot(a[0] - c[0] * 1000, a[1] - c[1] * 1000, a[2] - c[2] * 1000) < 1e-3;
-  const owner = (i: number) => {
-    const a = bp.pts[i], b = bp.pts[(i + 1) % n];
-    const w = bp.wires.find((j) => (near(a, d.wires[j].a) && near(b, d.wires[j].b)) || (near(a, d.wires[j].b) && near(b, d.wires[j].a)));
-    return w == null ? -1 : pcs.findIndex((q) => q.wires.includes(w));
-  };
-  const own = Array.from({ length: m }, (_, i) => owner(i));
-  if (own.some((o) => o < 0)) return [bp];
-  let s0 = 0;
-  if (bp.closed) {
-    const k = own.findIndex((o, i) => o !== own[(i + m - 1) % m]);
-    if (k < 0) return [bp];
-    s0 = k;
-  } else if (own.every((o) => o === own[0])) return [bp];
-  const out: BendPath[] = [];
-  let run: number[] = [];
-  const flush = () => {
-    if (run.length > 1) out.push({ ...bp, closed: false, pts: [...run.map((i) => bp.pts[i]), bp.pts[(run[run.length - 1] + 1) % n]], wires: bp.wires.filter((j) => pcs[own[run[0]]].wires.includes(j)) });
-    run = [];
-  };
-  for (let t = 0; t < m; t++) {
-    const i = (s0 + t) % m;
-    if (run.length && own[i] !== own[run[run.length - 1]]) flush();
-    run.push(i);
-  }
-  flush();
+const TRIMMED = new WeakMap<Design, Set<string>>();
+/** Tags of the trimmed parts (`tuning(def, p, d).rows`), memoised per Design: tuning rebuilds the design. */
+export function trimmedTags(def: AntennaDef, p: Params, d: Design): Set<string> {
+  let t = TRIMMED.get(d);
+  if (!t) TRIMMED.set(d, t = new Set(tuning(def, p, d).rows.map((r) => r.tag)));
+  return t;
+}
+
+const RECIPES = new WeakMap<Design, Recipe[]>();
+
+/** Bend recipes of the design's wire pieces (one per distinct shape, `qty` copies); [] for sky-cone types.
+ *  Memoised per Design (the Build panel, the templates, the PDF and the printed parts share one result); a design with
+ *  no bent path returns [] before the tuning (which rebuilds the design) runs. */
+export function bendRecipes(def: AntennaDef, p: Params, d: Design): Recipe[] {
+  const hit = RECIPES.get(d);
+  if (hit) return hit;
+  const out = recipesOf(def, p, d);
+  RECIPES.set(d, out);
   return out;
 }
 
-/** Bend recipes of the design's wire pieces (one per distinct shape, `qty` copies); [] for sky-cone types.
- *  `trimmed` = the tags of `tuning(def, p, d).rows`, when the caller has them already (tuning rebuilds the design). */
-export function bendRecipes(def: AntennaDef, p: Params, d: Design, trimmed?: Set<string>): Recipe[] {
+function recipesOf(def: AntennaDef, p: Params, d: Design): Recipe[] {
   // sky-cone types have their own kit; d.cuts replaces the wire pieces by a table, and printed antennas have no bent wire
   if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
-  trimmed ??= new Set(tuning(def, p, d).rows.map((r) => r.tag));
-  const pcs = pieces(d), rows = cutList(def, d, trimmed);
+  const bps = bendPaths(d);
+  if (!bps.length) return [];
+  const pcs = pieces(d), rows = cutList(def, d, trimmedTags(def, p, d));
   const out: Recipe[] = [], sigs: string[] = [];
-  for (const bp0 of bendPaths(d).flatMap((x) => splitByPiece(x, d, pcs))) {
+  for (const bp0 of bps.flatMap((x) => splitByPiece(x, d, pcs))) {
     const bp = startAtFeed(bp0, d), f = flatten(bp);
     if (!f) continue;
     const pc = pcs.find((q) => !q.mech && bp0.wires.some((w) => q.wires.includes(w)));
@@ -141,7 +129,7 @@ export function bendRecipes(def: AntennaDef, p: Params, d: Design, trimmed?: Set
       } else open = false;
     }
     sigs.push(sig);
-    out.push({ tag: pc.tag, group: bp.group, dia: pc.dia, qty: 1, cut: cutLen, length: s / 1000, closed: f.closed, die, bends, curves, path: f.pts });
+    out.push({ tag: pc.tag, group: bp.group, what: row?.what ?? { s: cutWhat(pc, def), a: [] }, dia: pc.dia, qty: 1, cut: cutLen, length: s / 1000, closed: f.closed, die, bends, curves, path: f.pts });
   }
   return out;
 }

@@ -1,9 +1,9 @@
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { AntennaDef, Design, Params } from "../../types";
-import { cutList, tuning, type CutRow, type Msg } from "../../build";
-import { bendRecipes, type Die, type Recipe } from "../../recipe";
+import { cutList, pieces, type CutRow, type Msg, type Piece } from "../../build";
+import { bendRecipes, trimmedTags, type Die, type Recipe } from "../../recipe";
 import { msg, type PartSpec } from "../parts";
-import type { P2 } from "../paths";
+import { bendPaths, type P2 } from "../paths";
 import { CLEAR, MAX_SIZE, WALL, mm } from "../rules";
 import { box, digits, type V3 } from "../shapes";
 import { D_MAX } from "./bend";
@@ -15,7 +15,7 @@ import { D_MAX } from "./bend";
 
 export const CUTBEND_STRINGS = [
   "Cut board",
-  "Cut board: push the wire to the bottom of a hole and cut flush; {0} holes",
+  "Cut board: push the wire to the bottom of a hole and cut flush; {0} hole(s)",
   "Hole {0}: cut {1} × {2}",
   "Lever bender",
   "Hand bender for {0} wire, clamped in a vise: a {1} bolt is the die and the roller on the lever bends the wire round it; stop holes at {2}°.",
@@ -38,12 +38,12 @@ export const CUTBEND_HOWTO: { board: string[]; lever: string[]; plate: string[] 
     "Print either this lever bender or the bending plate, not both",
     "Print the base standing on its long edge (the one with the tab and the block) and the lever flat; neither needs supports.",
     "Push the nut into the hexagon on top of the base, screw the die bolt up through it from below and slide the lever onto the die.",
-    "Drop the roller bolt into the other hole of the lever, head up: its tip rests on the base.",
+    "Drop the roller bolt into the other hole of the lever, head up: its tip rests on the bottom of the hole, clear of the base.",
     "Clamp the tab in a vise: the head of the die bolt sticks out under the base, so it does not lie flat on a bench.",
     "Drop the stop bolt into the hole for the bend angle, head up, so the head rests on the base: the stop holes sit at the recipe angles on the engraved lines (every 15°, longer at 45°, 90°, 135° and 180°), and the lever stops against the bolt head.",
     "Lay the wire on the lever through the groove in the block, between the die and the roller, with the cut end on the far side of the die and the mark on the engraved line across the lever.",
     "B1 is the mark nearest the cut end: bend in order from that end, then push the wire on to the next mark.",
-    "Bends marked R are made with the wire as drawn; turn the wire over (about its own axis) before each bend marked L.",
+    "Bends marked R are made with the wire lying as drawn, bends marked L with it turned over (half a turn about its own axis): turn it over only when the letter changes from the previous bend.",
     "Swing the lever until it hits the stop. Copper springs back: press 2–5° past it and check the angle against the engraved lines or the groove plate.",
   ],
   plate: [
@@ -53,7 +53,7 @@ export const CUTBEND_HOWTO: { board: string[]; lever: string[]; plate: string[] 
     "The stop holes sit at the recipe angles on the engraved lines (every 15°, longer at 45°, 90°, 135° and 180°).",
     "Lay the wire through the groove in the block, between the trap pin and the die, with the cut end past the die and the mark on the engraved line across the wire at the die.",
     "B1 is the mark nearest the cut end: bend in order from that end, then push the wire on to the next mark.",
-    "Bends marked R are made with the wire as drawn; turn the wire over (about its own axis) before each bend marked L.",
+    "Bends marked R are made with the wire lying as drawn, bends marked L with it turned over (half a turn about its own axis): turn it over only when the letter changes from the previous bend.",
     "Bend the free end round the die by hand until it rests against the stop bolt. Copper springs back: press 2–5° past it and check the angle against the engraved lines or the groove plate.",
   ],
 };
@@ -133,6 +133,7 @@ export interface BenderGeom { die: Die; dMm: number; stops: { angle: number; c: 
 
 const STOP_R = 40;      // mm, stop-hole circle about the die
 const BASE_T = 8, LEVER_T = 8, PLATE_T = 6;
+const ROLLER_FLOOR = 1;   // mm of lever under the roller bolt: its tip rides clear of the base and the die nut's open pocket
 const LINE_W = 0.8, LINE_DEPTH = 0.6;
 // ISO 4762 socket head Ø, ISO 4032 nut across flats and height, ISO 10642 countersunk head Ø (mm)
 const HEAD: Record<Die["bolt"], number> = { M3: 5.5, M4: 7, M5: 8.5, M6: 10 };
@@ -199,7 +200,7 @@ export function leverSolids(M: M, g: BenderGeom): { base: Manifold; lever: Manif
   const handle = box(M, [-10, -128, BASE_T], [10, 0, top]);
   const arm = M.Manifold.hull([box(M, [0, -headR - 14, BASE_T], [STOP_R + 4, -headR, top]), box(M, [-10, -40, BASE_T], [10, -headR, top])]);
   const lever = M.Manifold.union([hub, handle, arm]).subtract(M.Manifold.union([
-    zHole(M, 0, 0, die.hole, BASE_T, top, false), zHole(M, g.roller[0], g.roller[1], die.hole, BASE_T, top, false),
+    zHole(M, 0, 0, die.hole, BASE_T, top, false), zHole(M, g.roller[0], g.roller[1], die.hole, BASE_T + ROLLER_FLOOR + 1, top, false),
     line(M, [g.tangentX, die.hole / 2 + 0.6], [g.tangentX, 10], top),
     line(M, [g.tangentX, g.roller[1] - die.hole / 2 - 1], [g.tangentX, g.roller[1] - die.hole / 2 - 8], top),
   ]));
@@ -258,14 +259,19 @@ const CACHE = new WeakMap<Design, PartSpec[]>();
 
 /** Cut board(s) for the straight and bent pieces ≤ 170 mm, plus one lever bender and one bending plate per die bolt among
  *  the bent pieces of wire ≤ D_MAX; [] for sky-cone types (their own kit) and printed antennas. Memoised per Design:
- *  the tuning (one rebuild of the design) runs once, however many panels ask. */
+ *  the tuning (one rebuild of the design, shared with bendRecipes) runs once, and not at all when nothing can qualify. */
 export function cutBendParts(def: AntennaDef, p: Params, d: Design): PartSpec[] {
   if (def.id.startsWith("skycone") || d.cuts || d.pcb) return [];
   const hit = CACHE.get(d);
   if (hit) return hit;
-  const trimmed = new Set(tuning(def, p, d).rows.map((r) => r.tag));
-  const recipes = bendRecipes(def, p, d, trimmed);
-  const holes = boardHoles(cutList(def, d, trimmed), recipes);
+  // nothing to bend and no cut-list piece short and thin enough for a board (the cut is never shorter than the piece): skip the tuning
+  const onBoard = (q: Piece) => q.group !== "feed" && !(q.mech && q.length < 5e-3) && q.length <= MAX_CUT + 1e-9 && mm(q.dia) <= D_MAX + 1e-9;
+  if (!bendPaths(d).length && !pieces(d).some(onBoard)) {
+    CACHE.set(d, []);
+    return [];
+  }
+  const recipes = bendRecipes(def, p, d);
+  const holes = boardHoles(cutList(def, d, trimmedTags(def, p, d)), recipes);
   const out = holes.length ? cutBoards(holes) : [];
   const bent = recipes.filter((r) => r.die && r.bends.length);
   for (const bolt of [...new Set(bent.map((r) => r.die!.bolt))].sort()) {

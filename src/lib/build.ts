@@ -252,7 +252,7 @@ function feedMatch(def: AntennaDef, d: Design): Msg | null {
   return null;
 }
 
-function cutWhat(pc: Piece, def: AntennaDef): string {
+export function cutWhat(pc: Piece, def: AntennaDef): string {
   if (pc.mech) return "Boom or support";
   if (def.id === "helix" && pc.group === "driven") return "Helix wire";
   if (def.id === "cloverleaf" && pc.group === "driven") return "Leaf wire";

@@ -3,6 +3,7 @@ import { ANTENNA_BY_ID } from "./antennas";
 import type { Design, Params } from "./types";
 import { bendPaths, type P2 } from "./print/paths";
 import { bendRecipes, dieFor, type Recipe } from "./recipe";
+import { buildPack } from "./build";
 
 const build = (id: string, extra: Params = {}) => { const def = ANTENNA_BY_ID[id]; const p = { ...def.defaults, ...extra }; return { def, p, d: def.build(p) }; };
 const recipes = (id: string, extra: Params = {}) => { const { def, p, d } = build(id, extra); return bendRecipes(def, p, d); };
@@ -143,6 +144,14 @@ describe("bendRecipes", () => {
   it("the mark is the end of the arc: at + Rc·θ", () => {
     const r = recipes("biquad")[0], Rc = r.die!.r + r.dia * 1000 / 2;
     for (const b of r.bends) expect((b.mark - b.at) * 1000).toBeCloseTo(Rc * b.angle * Math.PI / 180, 9);
+  });
+
+  it("every recipe names its piece as the cut list does", () => {
+    for (const [id, extra] of [["quad", { band: "430e6-440e6" }], ["yagi", { driven: "folded", d: 2e-3 }], ["cloverleaf", {}]] as [string, Params][]) {
+      const { def, p, d } = build(id, extra), cuts = buildPack(def, p, d).cuts;
+      for (const r of bendRecipes(def, p, d)) expect(cuts.find((c) => c.tag.split(/[,–]/)[0] === r.tag.split(/[,–]/)[0])!.what, `${id} ${r.tag}`).toEqual(r.what);
+    }
+    expect(recipes("biquad")[0].what.s).toBe("Driven element");
   });
 
   it("skycone gets none", () => {

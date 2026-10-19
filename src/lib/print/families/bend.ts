@@ -1,7 +1,8 @@
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Design, Vec3 } from "../../types";
 import { msg, type PartSpec } from "../parts";
-import { bendPaths, filleted, flatten, signature, type BendPath, type Flat, type Groove, type P2 } from "../paths";
+import { bendPaths, filleted, flatten, signature, splitByPiece, type BendPath, type Flat, type Groove, type P2 } from "../paths";
+import { pieces } from "../../build";
 import { CLEAR, MAX_SIZE, SEG_H, WALL, mm } from "../rules";
 import { box, dShape, rod, stack, twistGroove, type V3 } from "../shapes";
 import { sides } from "./former";
@@ -13,7 +14,7 @@ import { sides } from "./former";
 
 export const BEND_STRINGS = [
   "Bend plate",
-  "Groove with the exact shape of {0} piece(s) of {1} wire, {2} long: press the wire into it and bend it round the pegs, so that every piece comes out the same.",
+  "Groove with the exact shape of {0} piece(s) of {1} wire, {2} long each: press the wire into it and bend it round the pegs, so that every piece comes out the same.",
   "Corner jig",
   "Bends {0} corner(s) of {1} wire by {2}° round the peg, so that every corner comes out the same.",
   "Bends {0} pair(s) of corners of {1} wire by {2}° each, {3} apart, in one go round the two pegs.",
@@ -21,6 +22,7 @@ export const BEND_STRINGS = [
   "Coil mandrel",
   "Grooved mandrel: winds {0} wire into a coil of {1} inside diameter, {2} per turn, {3} turns.",
   "Plain mandrel of {0} for {1} wire: wind {2} turns side by side, then stretch the coil until the last turn sits in the notch ({3} coil length).",
+  "Groove with the exact shape of {0} pieces of {1} wire as in the cut list, {2} in all: press each into its part of the groove and bend it round the pegs, so that every piece comes out the same.",
 ];
 
 /** How-to steps per part, in order. */
@@ -246,6 +248,7 @@ const length = ({ pts, closed }: BendPath) => {
  *  one corner jig per distinct corner group (purpose: how many corners or groups of the design it bends). */
 export function bendParts(d: Design): PartSpec[] {
   const groups = new Map<string, { f: Flat; p: BendPath; n: number }>();
+  const pcs = pieces(d);
   for (const p of bendPaths(d)) {
     if (p.d > D_MAX + 1e-9) continue;
     const f = flatten(p);
@@ -263,9 +266,12 @@ export function bendParts(d: Design): PartSpec[] {
       }
       continue;
     }
+    // count and length as the cut list has them: a path made of several pieces (a biquad's two halves) is several pieces
+    const parts = splitByPiece(p, d, pcs).map(length), same = parts.every((x) => Math.abs(x - parts[0]) < 0.5e-3), wire = { len: f.d / 1000 };
     out.push({
       id: `bend-plate-${out.length + 1}`, title: BEND_STRINGS[0], use: "jig", qty: 1,
-      purpose: msg(BEND_STRINGS[1], n, { len: f.d / 1000 }, { len: length(p) }), howTo: BEND_HOWTO.plate.map((s) => msg(s)),
+      purpose: same ? msg(BEND_STRINGS[1], n * parts.length, wire, { len: parts[0] }) : msg(BEND_STRINGS[9], n * parts.length, wire, { len: length(p) }),
+      howTo: BEND_HOWTO.plate.map((s) => msg(s)),
       build: (M) => [plate(M, f)],
     });
   }
