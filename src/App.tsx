@@ -2,7 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { ANTENNA_BY_ID } from "./lib/antennas";
 import { set, useStore, type MainTab, type Theme, type Unit } from "./store";
 import { LANGS, useT, type Lang } from "./i18n";
-import { AntennaPicker, ParamsPanel } from "./components/Sidebar";
+import { ParamsPanel } from "./components/Sidebar";
 import { Preview } from "./components/Preview";
 import { Results } from "./components/Results";
 import { Exports } from "./components/Exports";
@@ -85,7 +85,6 @@ export default function App() {
             <button className="mobile-only drawer-close" onClick={() => setDrawer(false)} aria-label={t("Close")}>✕</button>
             <Section title="Antenna type"><AntennaSelect onPick={() => setDrawer(false)} /></Section>
             <ParamsPanel />
-            <AntennaPicker onPick={() => setDrawer(false)} />
           </div>
         </aside>
         <main className="main">

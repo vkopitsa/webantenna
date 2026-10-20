@@ -1,4 +1,4 @@
-import { ANTENNA_BY_ID, ANTENNAS, CATEGORIES } from "../lib/antennas";
+import { ANTENNA_BY_ID } from "../lib/antennas";
 import type { ParamDef } from "../lib/types";
 import { get, resetParams, set, setParam, useStore } from "../store";
 import { useT } from "../i18n";
@@ -10,7 +10,6 @@ import { MAX_BANDS } from "../lib/sanitize";
 import { affected } from "../lib/affects";
 import { setHover, useHover, type Hover } from "../hover";
 import { useEffect, useRef } from "react";
-import { AntennaIcon } from "./AntennaIcon";
 
 const ALL_PRESETS = [...BAND_PRESETS, ...WIDE_PRESETS];
 
@@ -68,37 +67,6 @@ function BandsInput({ def, value }: { def: ParamDef; value: string }) {
         <div className="hint warn-text">{t("These bands span {0}:1 but this type covers about {1}:1, so it is designed for {2}–{3} only. Narrow the bands, or press Synthesize to compare the types.", +ratio.toPrecision(3), +maxRatio.toPrecision(2), fmtHz(lo, 3), fmtHz(lo * maxRatio, 3))}</div>
       )}
     </div>
-  );
-}
-
-
-export function AntennaPicker({ onPick }: { onPick?: () => void }) {
-  const t = useT();
-  const type = useStore((s) => s.type);
-  return (
-    <Section title="Antenna type">
-      <div className="picker">
-        {CATEGORIES.map((c) => {
-          const list = ANTENNAS.filter((a) => a.category === c);
-          if (!list.length) return null;
-          return (
-            <div key={c} className="cat">
-              <div className="cat-title">{t(c)}</div>
-              {list.map((a) => (
-                <button key={a.id} className={"pick" + (a.id === type ? " on" : "")} aria-pressed={a.id === type}
-                  onClick={() => { set({ type: a.id }); onPick?.(); }}>
-                  <AntennaIcon def={a} />
-                  <span className="pick-text">
-                    <span className="pick-name">{t(a.name)}</span>
-                    <span className="pick-sum">{t(a.summary)}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </Section>
   );
 }
 
