@@ -12,7 +12,7 @@ fam = importlib.import_module(sys.argv[1])
 p = json.load(open(sys.argv[2]))
 f_lo, f_hi, n = float(sys.argv[3]), float(sys.argv[4]), int(sys.argv[5])
 els = np.arange(-90, 91, 5.0)
-fs = D.logf(n, 0.9 * f_lo, 1.1 * f_hi)
+fs = D.table_freqs(n, f_lo, f_hi)
 up, lo, zt, zb, rm = fam.profile(p)
 out = dict(fLo=f_lo, fHi=f_hi, gap=p["g"], upper=[np.round(a, 6).tolist() for a in up],
            lower=[np.round(a, 6).tolist() for a in lo], els=els.tolist(), f=[], r=[], x=[], g=[])
@@ -21,6 +21,9 @@ for f in fs:
     out["f"].append(round(f / f_lo, 5)); out["r"].append(round(s.Z.real, 2)); out["x"].append(round(s.Z.imag, 2))
     out["g"].append(np.round(bor.gain_dbi(s, np.radians(90 - els)), 2).tolist())
     print(f"{f/1e6:8.1f} MHz  Z {s.Z.real:6.1f}{s.Z.imag:+6.1f}j  swr {bor.swr(s.Z):.2f}", flush=True)
+if D.EXT_TOP:                                   # extension mode (EXT_TOP): no currents, extend_tables.py appends the rows
+    json.dump(out, open(sys.argv[6], "w"))
+    sys.exit(0)
 # surface currents for the Radiation view: one fixed mesh (λ/12 at the top), solved at 16 log-spaced frequencies;
 # per segment (ρ0, z0, ρ1, z1) and the total axial current at its middle (V = 1 at the port), aperture excluded
 me = bor.build_mesh(fam.geometry(p), 1.1 * f_hi, per_lambda=12)

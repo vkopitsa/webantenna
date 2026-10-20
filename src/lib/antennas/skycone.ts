@@ -342,7 +342,7 @@ function build(t: SkyconeTable, bandsP: Params, sleeve = false): Design {
         : sleeve
         ? "Ferrite sleeve required: stack about 6 ferrite beads (material 43 or 61, about 150 Ω each) on the first 11 cm of coax below the ground cone. This small antenna couples strongly to the cable: with one bead a 15–35 cm cable still lifts the SWR to 2.7 at the bottom of the band, with the sleeve it stays below 1.9."
         : "Clip a ferrite (about 150 Ω) onto the coax just below the ground cone: at the bottom of the band the cable otherwise carries current and the SWR depends on its length.",
-      ...(fHigh > fTop * 1.001 ? ["Warning: your highest band is above this shape's range; the SWR there is not computed. Lower the bands or use the 21:1 version."] : []),
+      ...(fHigh > fTop * 1.001 ? ["Warning: your highest band is above this shape's design range; the Simulation shows the SWR there, but the shape was not optimised for it. Lower the bands or use the 21:1 version."] : []),
       "Full study, build steps, tolerances and solver checks: docs/FPV-DETECTOR-ANTENNA.md in the project repository.",
     ],
     coax: bare ? { choke: "none", bare } : { choke: sleeve ? "sleeve" : "bead" },
@@ -631,7 +631,7 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
         : mini
         ? "Ferrite sleeve required: stack about 6 ferrite beads (material 43 or 61, about 150 Ω each) on the first 11 cm of coax below the ground cone. This small antenna couples strongly to the cable: 15–35 cm of bare cable lifts the SWR to 3.5 in the lower half of the band, one bead leaves 2.1, the sleeve keeps it below 1.8."
         : "Ferrite sleeve required: stack about 6 ferrite beads (material 43 or 61, about 150 Ω each) on the first 11 cm of coax below the ground cone. This small antenna couples strongly to the cable: with one bead a 15–35 cm cable still lifts the SWR to 2.7 at the bottom of the band, with the sleeve it stays below 1.9.",
-      ...(fHigh > fTop * 1.001 ? ["Warning: your highest band is above this shape's range; the SWR there is not computed. Lower the bands or use the 21:1 version."] : []),
+      ...(fHigh > fTop * 1.001 ? ["Warning: your highest band is above this shape's design range; the Simulation shows the SWR there, but the shape was not optimised for it. Lower the bands or use the 21:1 version."] : []),
       "Full study, build steps, tolerances and solver checks: docs/FPV-DETECTOR-ANTENNA.md in the project repository.",
     ],
     // the choke tubes were sized at the study's scale (fLo); they scale with the antenna

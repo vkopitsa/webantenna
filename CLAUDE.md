@@ -103,6 +103,8 @@ docs/FPV-DETECTOR-BUILD.md    home build guide for it; STL jigs/cover/cup in doc
                          "Coax below the antenna" param `coax`: as designed (ferrite / choke tubes, `Design.coax` → BOM + handle)
                          or a bare cable of 0.5 / 0.8 / 1.1 λ (`SkyconeTable.bare`, from the tools' export_bare_table.py + add_bare.py)
                          wire-Ø tables: tools' results/run_wires.sh + wire_variant.py, compare_tables.py (--summary), check_d1_wires.py (Ø1 guard), to_ts.py --add-wires
+                         tables run to ~10.2 × fLow (A21: 23.5) for "Simulate up to" above the design band (fHi / maxRatio unchanged): the tools' results/run_ext.sh
+                         (EXT_TOP mode of the export scripts: only the new points, anchor = committed last row) + extend_tables.py; redo after any to_ts.py rebuild
 tools/wideband-antenna/  Python (numba) body-of-revolution MoM + FDTD, DE optimiser, tolerance/report scripts;
                          NOT part of the app; README.md there has setup, workflow and lessons (incl. the Ø40 × 40 mm
                          study: below the Chu floor for 960 MHz, bends don't help; W40 = 1.4–6.4 GHz is skyconecage40; the two-antenna split: B44f = 1.36–7 GHz is skyconecage44 with a

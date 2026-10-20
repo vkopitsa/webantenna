@@ -54,12 +54,15 @@ if p.get("cser", 0) > 0.05:
     cage["pinCap"] = e24(p["cser"])                                  # series capacitor (pF) in the centre pin
 out = dict(fLo=f_lo, fHi=f_hi, gap=p["g"], upper=[np.round(a, 6).tolist() for a in up],
            lower=[np.round(a, 6).tolist() for a in lo], els=els.tolist(), f=[], r=[], x=[], g=[], cage=cage)
-for f in D.logf(nf, 0.9 * f_lo, 1.1 * f_hi):
+for f in D.table_freqs(nf, f_lo, f_hi):
     z, gg = F10.model(p, f, seg=float(os.environ.get("SEG", "1.5e-3")), els=els, nphi=8)
     g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))[::-1]        # rows come theta-ascending = elevation descending
     out["f"].append(round(f / f_lo, 5)); out["r"].append(round(z.real, 2)); out["x"].append(round(z.imag, 2))
     out["g"].append(np.round(g, 2).tolist())
     print(f"{f/1e6:8.1f} MHz  Z {z.real:6.1f}{z.imag:+6.1f}j  swr {F10.swr(z):.2f}  el 30 {g[24]:+.1f} dBi", flush=True)
+if D.EXT_TOP:                                   # extension mode (EXT_TOP): no currents, extend_tables.py appends the rows
+    json.dump(out, open(sys.argv[5], "w"))
+    sys.exit(0)
 seg = 3e8 / (1.1 * f_hi) / 12
 out["cur"] = dict(seg=None, f=[], i=[])
 for f in D.logf(16, 0.95 * f_lo, 1.05 * f_hi):

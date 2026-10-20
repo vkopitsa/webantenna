@@ -109,8 +109,12 @@ describe("bands outside a model's range", () => {
   });
   it("sky-cone: bands above the precomputed sweep are flagged, not silently dropped", () => {
     const cage = sim("skyconecage44", "600e6-9e9"), rc = cage.r(cage.d);
-    expect(rc.z[rc.z.length - 1].f).toBeLessThan(4e9);
+    expect(rc.z[rc.z.length - 1].f).toBeLessThan(6.2e9);         // the tables stop at ~10.2 x the lowest frequency
     expect(rc.notes.some((n) => n.startsWith("Your bands go above"))).toBe(true);
+    // above the design range (4.6:1) but inside the extended table: SWR computed to the band top, no note
+    const s40 = sim("skycone40", "1e9-7.2e9"), rs = s40.r(s40.d);
+    expect(rs.z[rs.z.length - 1].f).toBeGreaterThanOrEqual(7.2e9);
+    expect(rs.notes.some((n) => n.startsWith("Your bands go above"))).toBe(false);
     const wide = sim("skycone21", "600e6-9e9"), rw = wide.r(wide.d);
     expect(rw.z[rw.z.length - 1].f).toBeCloseTo(9e9, -6);
     expect(rw.notes.some((n) => n.startsWith("Your bands go above"))).toBe(false);

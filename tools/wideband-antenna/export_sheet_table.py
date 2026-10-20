@@ -27,7 +27,7 @@ def _row(f):
 
 # the free-space rows (export_shaped_table.py's first loop) in 8 processes, then served from this cache
 with Pool(int(os.environ.get("POOL", "8"))) as pool:
-    cache = dict(pool.map(_row, list(D.logf(nf, 0.9 * f_lo, 1.1 * f_hi))))
+    cache = dict(pool.map(_row, list(D.table_freqs(nf, f_lo, f_hi))))
 _model = F10.model
 
 
@@ -36,9 +36,13 @@ def model(q, f, **kw):
         return cache[f]
     return _model(q, f, **kw)
 F10.model = model
-runpy.run_path("export_shaped_table.py", run_name="__main__")
+try:
+    runpy.run_path("export_shaped_table.py", run_name="__main__")
+except SystemExit as e:                         # extension mode ends there before the currents
+    if e.code:
+        raise
 d = json.load(open(out))
 sh = d.pop("cage")["short"]
-d["short"] = dict(rho=sh["rho"], zHot=sh["zHot"], zGnd=sh["zGnd"], r=sheetgrid.F.RWIRE, k=sh["k"])
+d["short"] = dict(rho=sh["rho"], zHot=sh["zHot"], zGnd=sh["zGnd"], r=sheetgrid.F.RWIRE, k=sh.get("k"))
 json.dump(d, open(out, "w"))
 print("short", d["short"])

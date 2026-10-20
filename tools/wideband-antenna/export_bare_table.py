@@ -19,7 +19,7 @@ KIND, FAM, DESIGN = sys.argv[1], sys.argv[2], sys.argv[3]
 F_LO, F_HI, NF, OUT = float(sys.argv[4]), float(sys.argv[5]), int(sys.argv[6]), sys.argv[7]
 LAMS = (0.5, 0.8, 1.1)
 LENS = [float(v) for v in os.environ["LENS_M"].split(",")] if os.environ.get("LENS_M") else [k * 3e8 / F_LO for k in LAMS]
-FS = list(D.logf(NF, 0.9 * F_LO, 1.1 * F_HI))
+FS = list(D.table_freqs(NF, F_LO, F_HI))
 
 
 def load():

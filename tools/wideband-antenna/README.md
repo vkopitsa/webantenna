@@ -149,6 +149,36 @@ and A55 stops at 0.8 mm.
   2. `add_bare.py`, the `bare` blocks.
   3. The `wires` variants from this folder (`to_ts.py --add-wires`, which inserts them into the existing entries).
 
+## Extension above the design band (`ext/`)
+
+The app's "Simulate up to" can ask for SWR above a table's grid, which ends at 1.1 f_hi. Every table except design A
+(already 23.5 f_lo) is extended to **10 f_lo**. Only the new points are solved, so the in-band numbers stay unchanged.
+
+- **The mode:** set `EXT_TOP` (a ratio to f_lo) and the export scripts (`export_app_table.py`, `export_cage_table.py`,
+  `export_shaped_table.py`, `export_sheet_table.py`, `export_bare_table.py`) solve `designs.table_freqs()`:
+  - the anchor, which is the committed grid's last point solved again;
+  - then the points above it, at the grid's own log step. The step is at least `EXT_STEP` in ln f (default ln 1.025),
+    so A55's narrow grid gets 76 points, not hundreds.
+  - No Radiation-view currents are written, and `fLo` / `fHi` stay as they are (the app's design range and
+    `maxRatio` come from them).
+- **The run:** `PY=<venv python> nohup sh results/run_ext.sh &`.
+  - It runs the solid S73 and B tables, then `run_wires.sh` with `WDIR=ext DS="1.0 0.5 0.8 1.5"`.
+  - Wait for `ext/all_done`.
+  - Points per table: S40 26 (bare 19), W40 26, B44f 20, W16 / W65 / S73 10, B 4, A55 76.
+- **The merge:** `python extend_tables.py ../../src/lib/antennas/skycone.data.ts ext`.
+  - It checks every file's anchor against the committed row (R, X, gains within `TOL` = 0.15) and writes nothing
+    on a mismatch.
+  - It then appends the rows to `f/r/x/g`, `bare` and every `wires[]` variant. Running it again changes nothing.
+  - On the first run every anchor matched to 0.05 (the .ts rounding).
+- **Convergence above the band:**
+  - W40 with segments of 1.5 mm vs 1.0 mm: d|Γ| ≤ 0.04 (mostly < 0.01) up to 10.2 f_lo. Z moves 3–6 % and the
+    +30° gain 0.2 dB, the same as at the anchor (in band).
+  - S40's sheet grid, 32 frames / 1.8 mm / 1.5 mm vs 48 / 1.2 mm / 1.0 mm (`RGRID` 0.267 mm): d|Γ| ≤ 0.037, SWR
+    within 0.3, the +30° gain 0.2–0.4 dB lower on the fine grid (0.39 at the anchor). The fine grid takes about
+    4 min per point.
+- **Regeneration order:** a full rebuild with `to_ts.py`, `add_bare.py` and `--add-wires` drops the extension. Run
+  `run_ext.sh` and `extend_tables.py` again after it.
+
 ## Workflow that worked (repeat it for a new requirement)
 
 1. **Baseline the obvious candidates** with the app's own MoM (`app_mom_baseline.test.ts.txt`):

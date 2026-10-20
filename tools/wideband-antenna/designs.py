@@ -2,6 +2,7 @@
 the pin (coax centre, radius a) rises to z = g where the upper (hot) element starts; the lower
 (ground) element is attached to the coax outer conductor at (b, 0)."""
 import math
+import os
 import numpy as np
 import bor
 
@@ -67,6 +68,24 @@ def evaluate(geo, freqs, flip=False, per_lambda=20, h_feed=0.3e-3, grow=0.25, el
 
 def logf(n, a=300e6, b=6.4e9):
     return a * (b / a) ** (np.arange(n) / (n - 1))
+
+
+EXT_TOP = float(os.environ.get("EXT_TOP", "0"))     # extension mode: the app tables' sweep top as a ratio to f_lo
+
+
+def table_freqs(n, f_lo, f_hi):
+    """The app tables' grid: n points log-spaced over [0.9 f_lo, 1.1 f_hi]. With EXT_TOP (a ratio to f_lo) only the
+    extension is returned: the grid's last point (the anchor, which extend_tables.py checks against the committed row)
+    and the points above it, same log step (at least EXT_STEP in ln f, default ln 1.025, so a narrow band such as
+    A55's does not get hundreds of points), up to the first one at or above EXT_TOP f_lo."""
+    fs = logf(n, 0.9 * f_lo, 1.1 * f_hi)
+    if not EXT_TOP:
+        return fs
+    step = max(np.log(fs[-1] / fs[-2]), float(os.environ.get("EXT_STEP", str(np.log(1.025)))))
+    out = [fs[-1]]
+    while out[-1] < EXT_TOP * f_lo * (1 - 1e-9):
+        out.append(fs[-1] * np.exp(len(out) * step))
+    return np.array(out)
 
 
 def show(rows, els=(0, 15, 30, 50)):

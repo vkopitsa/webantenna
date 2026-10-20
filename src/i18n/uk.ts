@@ -1122,7 +1122,7 @@ export const UK: Record<string, string> = {
   "Full study, build steps, tolerances and solver checks: docs/FPV-DETECTOR-ANTENNA.md in the project repository.": "Повне дослідження, кроки складання, допуски й перевірки розв'язувачів: docs/FPV-DETECTOR-ANTENNA.md у репозиторії проєкту.",
   "Rim": "Обідок",
   "Lid": "Кришка",
-  "Warning: your highest band is above this shape's range; the SWR there is not computed. Lower the bands or use the 21:1 version.": "Увага: ваш найвищий діапазон виходить за межі цієї форми; КСХ там не обчислено. Знизьте діапазони або візьміть версію 21:1.",
+  "Warning: your highest band is above this shape's design range; the Simulation shows the SWR there, but the shape was not optimised for it. Lower the bands or use the 21:1 version.": "Увага: ваш найвищий діапазон виходить за межі розрахункового діапазону цієї форми; симуляція показує там КСХ, але форму для нього не оптимізовано. Знизьте діапазони або візьміть версію 21:1.",
   "Sky-tilted capped bicone (21:1)": "Біконус із кришкою, нахилений до неба (21:1)",
   "The same idea with a ground skirt: 300 MHz–6.4 GHz at Ø275 × 294 mm, beam tilted up toward the sky.": "Та сама ідея зі спідницею на землі: 300 МГц–6,4 ГГц при Ø275 × 294 мм, промінь піднятий до неба.",
   "Ground skirt length": "Довжина спідниці землі",
