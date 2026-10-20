@@ -54,7 +54,7 @@ describe("thick-wire hot washer", () => {
   }, 120_000);
 
   it("Ø1 mm: the flat washer, as before", () => {
-    for (const id of ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55"]) {
+    for (const id of ["skyconecage", "skyconecagemini", "skyconecagetilt", "skyconecage40", "skyconecage44", "skyconecage55"]) {
       const d = ANTENNA_BY_ID[id].build({ ...ANTENNA_BY_ID[id].defaults, d: 1e-3 });
       expect(d.frames!.dish, id).toBeUndefined();
       expect(d.tables.find((x) => x.title.startsWith("Hub washers"))!.columns.length, id).toBe(4);

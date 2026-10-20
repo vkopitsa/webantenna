@@ -4,17 +4,21 @@ export_shaped_table.py: the small cage with its shorting wire, `cage.short`). --
 entry alone, to append to skycone.data.ts without regenerating the others.
 python to_ts.py --add-wires wires ../../src/lib/antennas/skycone.data.ts adds a `wires` array (the re-solved wire diameters from
 wires/app_<D>_d<mm>.json + bare_<D>_d<mm>.json, D = W16 W65 W40 B44f A55 S40) to those SKYCONE_* entries in place; the _d1.0 files are the
-base entry itself and are only checked against it."""
+base entry itself and are only checked against it. ONLY=T66,… limits it to those designs (an entry already
+extended by extend_tables.py no longer matches its grid: add the wires before extending)."""
 import glob, json, os, re, sys
 
-WIRE_NAMES = {"W16": "SKYCONE_W16", "W65": "SKYCONE_W65", "W40": "SKYCONE_W40", "B44f": "SKYCONE_B44", "A55": "SKYCONE_A55", "S40": "SKYCONE_S40"}
+WIRE_NAMES = {"W16": "SKYCONE_W16", "W65": "SKYCONE_W65", "W40": "SKYCONE_W40", "B44f": "SKYCONE_B44", "A55": "SKYCONE_A55", "S40": "SKYCONE_S40", "T66": "SKYCONE_T66"}
 
 
 def add_wires(wdir, path):
     r1 = lambda a: [round(v, 1) for v in a]
     same = lambda a, b, what: (len(a) == len(b) and max(abs(x - y) for x, y in zip(a, b)) <= 1e-9) or sys.exit(f"{what}: grid differs from the base entry")
     src = open(path).read()
+    only = os.environ.get("ONLY", "").split(",") if os.environ.get("ONLY") else None   # ONLY=T66: just those designs
     for D, name in WIRE_NAMES.items():
+        if only and D not in only:
+            continue
         m = re.search(rf"^export const {name}: SkyconeTable = (\{{.*\}});$", src, re.M)
         assert m, f"{name} not found in {path}"
         obj = json.loads(m.group(1))
@@ -53,7 +57,7 @@ if len(sys.argv) == 4 and sys.argv[1] == "--add-wires":
     add_wires(sys.argv[2], sys.argv[3])
     sys.exit(0)
 names = {"app_B.json": "SKYCONE_8", "app_A.json": "SKYCONE_21", "app_S73.json": "SKYCONE_7", "app_W16.json": "SKYCONE_W16",
-         "app_W65.json": "SKYCONE_W65", "app_W40.json": "SKYCONE_W40", "app_B44f.json": "SKYCONE_B44", "app_A55.json": "SKYCONE_A55", "app_S40.json": "SKYCONE_S40"}
+         "app_W65.json": "SKYCONE_W65", "app_W40.json": "SKYCONE_W40", "app_B44f.json": "SKYCONE_B44", "app_A55.json": "SKYCONE_A55", "app_S40.json": "SKYCONE_S40", "app_T66.json": "SKYCONE_T66"}
 src = {"app_B.json": "design B_simple (family6, 800 MHz – 6.4 GHz)", "app_A.json": "design A (family4, 300 MHz – 6.4 GHz)",
        "app_S73.json": "design S73 (family8, 960 MHz – 6.4 GHz, compact)",
        "app_W16.json": "design W16 (family9, 16-frame wire cage of Ø1 mm wire, 960 MHz – 6.4 GHz; NEC-2, gain = mean over phi)",
@@ -61,7 +65,8 @@ src = {"app_B.json": "design B_simple (family6, 800 MHz – 6.4 GHz)", "app_A.js
        "app_W40.json": "design W40 (family13, Ø39 × 40 mm cage with one shorting wire, 1.4 – 6.4 GHz: below the Chu floor for 960 MHz; NEC-2 at 1.5 mm segments, gain = mean over 8 azimuths)",
        "app_B44f.json": "design B44f (family13, Ø43 × 44 mm cage with one shorting wire, 1.36 – 7 GHz, the high-band half of the two-antenna split; NEC-2 at 1.5 mm segments, gain = mean over 8 azimuths)",
        "app_A55.json": "design A55 (family13, Ø51 × 54 mm cage with two coiled shorting wires, 3.6 pF in one and 2.2 pF in the pin, 960 MHz – 1.36 GHz, the low-band half of the split; NEC-2 at 1.5 mm segments, gain = mean over 8 azimuths)",
-       "app_S40.json": "design S40 (W40's profile in sheet metal + one shorting wire, 1.4 – 6.4 GHz; NEC-2 wire grid of the sheet, sheetgrid.py: 24 frames, hoops every 2.5 mm, 1.5 mm segments, gain = mean over 8 azimuths)"}
+       "app_S40.json": "design S40 (W40's profile in sheet metal + one shorting wire, 1.4 – 6.4 GHz; NEC-2 wire grid of the sheet, sheetgrid.py: 24 frames, hoops every 2.5 mm, 1.5 mm segments, gain = mean over 8 azimuths)",
+       "app_T66.json": "design T66 (family10/11, W65 re-optimised for a sky-tilted beam: PATTERN=tilt, peak 30-50 deg, null overhead, Ø64 × 66 mm, one shorting wire, 960 MHz – 6.4 GHz; NEC-2 at 1.5 mm segments, gain = mean over 8 azimuths)"}
 entry_only = sys.argv[1] == "--entry"
 if entry_only:
     sys.argv.pop(1)

@@ -37,6 +37,7 @@ const FAMILIES: Record<string, (p: Params, d: Design, def: AntennaDef) => PartSp
   skycone7: (p, d, def) => [...skyconeParts(d, 0.3, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],
   skyconecage: (p, d, def) => [...skyconeParts(d, 0, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],
   skyconecagemini: (p, d, def) => [...skyconeParts(d, 0, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],
+  skyconecagetilt: (p, d, def) => [...skyconeParts(d, 0, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],
   skyconecage40: (p, d, def) => [...skyconeParts(d, 0, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],
   skycone40: (p, d, def) => [...skyconeParts(d, 0.3, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],
   skyconecage44: (p, d, def) => [...skyconeParts(d, 0, d.coax?.choke !== "none"), ...cutBendParts(def, p, d)],

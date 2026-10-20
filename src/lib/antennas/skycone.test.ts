@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ANTENNA_BY_ID } from "./index";
-import { SKYCONE_8, SKYCONE_W16, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
+import { SKYCONE_8, SKYCONE_W16, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_T66, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
 import { SKYCONE_TABLES, baseWire, cageFrames, coilLimit, hubFor, skyconeCurrents, skyconeGain, skyconeZ, tableAt } from "./skycone";
 import { buildPack } from "../build";
 import { radiationEligible, s11, simulate } from "../simulate";
@@ -179,6 +179,37 @@ describe("sky-tilted capped bicones", () => {
     expect(skyconeCurrents("skyconecage44", d)!.els.length).toBe(16 * (SKYCONE_B44.cur.seg.length - kb) + kb);
   });
 
+  it("45° beam cage is design T66: W65 re-optimised for the elevation pattern, Ø64 × 66 mm, SWR < 2, beam at 35–55° from 2.5 GHz", () => {
+    const def = ANTENNA_BY_ID.skyconecagetilt, p = { bands: "960e6-6400e6" }, d = def.build(p);
+    // tools/wideband-antenna/designs/T66.json (runT.sh t66a, PATTERN=tilt): same wire count as W65, 2793.6 mm of wire
+    const live = d.wires.filter((w) => !w.drawOnly);
+    expect(live.length).toBe(314);
+    expect(live.reduce((a, w) => a + Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1], w.b[2] - w.a[2]), 0) * 1e3).toBeCloseTo(2793.6, 0);
+    expect(dim("skyconecagetilt", "960e6-6400e6", "Overall height") * 1e3).toBeCloseTo(65.6, 1);
+    expect(dim("skyconecagetilt", "960e6-6400e6", "Ground cone diameter") * 1e3).toBeCloseTo(64.3, 1);
+    expect(dim("skyconecagetilt", "960e6-6400e6", "Shorting wire length") * 1e3).toBeCloseTo(12.15, 1);
+    const sh = live.filter((w) => w.tag === "S");
+    expect(sh.length).toBe(1);
+    expect(Math.hypot(sh[0].a[0], sh[0].a[1]) * 1e3).toBeCloseTo(9.91, 2);
+    const r = simulate(def, p, d);
+    expect(Math.max(...r.z.filter((q) => q.f >= 960e6 && q.f <= 6.4e9).map((q) => s11(q, 50).swr))).toBeLessThan(2.0);
+    // the pattern goal (tools tilt_check.py): from 2.5 GHz the peak sits at 35–55° elevation, ≥ 9 dB over the zenith
+    // and ≥ 6 dB over −30°; at 1 GHz the cage is too small to tilt (peak at the horizon)
+    const el = (g: (th: number) => number, e: number) => g(((90 - e) * Math.PI) / 180);
+    for (const f of [2.5e9, 3e9, 3.5e9, 4.5e9, 5.5e9, 6.4e9]) {
+      const g = skyconeGain(SKYCONE_T66, 960e6, f), es = Array.from({ length: 37 }, (_, k) => -90 + 5 * k);
+      const pk = es.reduce((a, e) => (el(g, e) > el(g, a) ? e : a), 0);
+      expect(pk, `${f}`).toBeGreaterThanOrEqual(35);
+      expect(pk, `${f}`).toBeLessThanOrEqual(55);
+      expect(el(g, pk) - el(g, 90), `${f}`).toBeGreaterThan(9);
+      expect(el(g, pk) - el(g, -30), `${f}`).toBeGreaterThan(6);
+    }
+    const g1 = skyconeGain(SKYCONE_T66, 960e6, 1e9);
+    expect(el(g1, 0)).toBeGreaterThan(el(g1, 45));
+    expect(d.notes.some((n) => n.includes("35–55° elevation"))).toBe(true);
+    expect(partsFor("skyconecagetilt", def.defaults, d).map((q) => q.id)).toEqual(expect.arrayContaining(["shell", "skycone-cup", "skycone-bend", "skycone-cradle", "skycone-hoops"]));
+  });
+
   it("low-band wire cage is design A55: two coiled shorting wires, two capacitors, Ø51 × 54 mm, SWR ≤ 1.9 over 0.96–1.36 GHz", () => {
     const def = ANTENNA_BY_ID.skyconecage55, p = { bands: "960e6-1360e6" }, d = def.build(p);
     // tools/wideband-antenna/family13.py (designs/A55.json): wire_list() gives 333 wires, 2238.3 mm; the coil 37.39 mm
@@ -312,7 +343,7 @@ describe("coax below the antenna: ferrite, choke tubes or a bare cable", () => {
 });
 
 describe("wire diameter tables", () => {
-  const IDS = ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55", "skycone40"];
+  const IDS = ["skyconecage", "skyconecagemini", "skyconecagetilt", "skyconecage40", "skyconecage44", "skyconecage55", "skycone40"];
   const tabs = IDS.map((id) => [id, SKYCONE_TABLES[id]] as const);
 
   it("every wire cage and S40 has variants on the base grid", () => {
@@ -385,7 +416,7 @@ describe("wire diameter tables", () => {
 });
 
 describe("wire diameter param", () => {
-  const IDS = ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55", "skycone40"];
+  const IDS = ["skyconecage", "skyconecagemini", "skyconecagetilt", "skyconecage40", "skyconecage44", "skyconecage55", "skycone40"];
   const hubRadii = (d: ReturnType<typeof ANTENNA_BY_ID.skyconecage.build>) => d.wires
     .filter((w) => !w.drawOnly && Math.hypot(w.a[0], w.a[1]) < 1e-12 && Math.hypot(w.b[0], w.b[1]) > 1e-9)
     .map((w) => Math.hypot(w.b[0], w.b[1]));
@@ -472,7 +503,7 @@ describe("wire diameter param", () => {
   });
 
   it("a thick wire on a cage with a shorting wire keeps the hub inside it", () => {
-    for (const id of ["skyconecagemini", "skyconecage40", "skyconecage44"]) {
+    for (const id of ["skyconecagemini", "skyconecagetilt", "skyconecage40", "skyconecage44"]) {
       const t = SKYCONE_TABLES[id], d = ANTENNA_BY_ID[id].build({ bands: ANTENNA_BY_ID[id].defaults.bands, d: 2e-3 });
       for (const h of hubRadii(d)) expect(h, id).toBeLessThanOrEqual(t.cage!.short!.rho - 2e-3 + 1e-12);
     }

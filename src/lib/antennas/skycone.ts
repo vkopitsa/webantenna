@@ -9,7 +9,7 @@ import type { IdealCurrents } from "../idealcurrents";
 import { fmt, wavelength } from "../rf";
 import { v } from "../geom";
 import { band, BANDS } from "./common";
-import { SKYCONE_21, SKYCONE_7, SKYCONE_8, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_W16, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
+import { SKYCONE_21, SKYCONE_7, SKYCONE_8, SKYCONE_A55, SKYCONE_B44, SKYCONE_S40, SKYCONE_T66, SKYCONE_W16, SKYCONE_W40, SKYCONE_W65 } from "./skycone.data";
 
 export interface SkyconeTable {
   /** Design band (Hz) the profile and the table belong to. */
@@ -450,7 +450,8 @@ function withNode(path: P2[], rho: number): { path: P2[]; q: P2 } {
  *  and (cage.short) straight shorting wires from a hot frame down to the ground frame under it.
  *  mini: "w40", the Ø40 mm cage (W40), whose band starts at 1.4 GHz because the box is below the Chu limit for 960 MHz;
  *  "a55", the Ø51 × 54 mm low-band cage (A55, 960 MHz – 1.36 GHz) with coiled shorting wires and two capacitors;
- *  "b44", the Ø43 × 44 mm cage (B44f) for 1.36–7 GHz with a choke sleeve instead of ferrite. */
+ *  "b44", the Ø43 × 44 mm cage (B44f) for 1.36–7 GHz with a choke sleeve instead of ferrite;
+ *  "t66", W65 re-optimised for the elevation pattern (T66: peak at 30–50°, null overhead, little below the horizon). */
 /** A shorting wire wound into a coil (tools/wideband-antenna/family12.py `_coil`): the straight line a → b with `turns`
  *  turns of radius rc round it, the radius ramped up over the first fifth and down over the last, straight leads of
  *  max(2.5 mm, 2 rc + 1.5 mm) at both ends, chords of at least 1.2 mm (all at scale s). The first normal is the
@@ -477,7 +478,7 @@ function coilPath(a: Vec3, b: Vec3, turns: number, rc: number, ph: number, s: nu
   return out;
 }
 
-function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" | "a55" = false): Design {
+function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" | "a55" | "t66" = false): Design {
   const { bands } = band(bandsP);
   const fLow = Math.min(...bands.map((b) => b[0])), fHigh = Math.max(...bands.map((b) => b[1]));
   const bare = bareOf(t, bandsP, fLow);
@@ -610,6 +611,8 @@ function buildCage(t: SkyconeTable, bandsP: Params, mini: false | "w40" | "b44" 
         ? "The low-band half of the two-antenna set: a Ø51 × 54 mm cage for 960 MHz – 1.36 GHz, 16 bent frames per side with a wire hoop at every bend, a lid, and two shorting wires from a hot frame down to the ground frame under it, each wound into a 2-turn coil. One shorting wire is a plain inductor across the feed; the other has a small capacitor in series, and the centre pin another: that gives the match two resonances (double tuning), which a box this size needs to cover a 34 %-wide band. SWR ≤ 1.9 over the band on its own (precomputed NEC-2). Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
         : mini === "b44"
         ? "The mini wire cage one size up, re-tuned for 1.36–7 GHz as the high-band half of a two-antenna set: Ø43 × 44 mm, 16 bent frames per side with a wire hoop at every bend and one straight shorting wire from a hot frame down to the ground frame under it. On its own it holds SWR ≤ 1.75 over the whole band (precomputed NEC-2). Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
+        : mini === "t66"
+        ? "The small wire cage re-shaped for its radiation pattern: 16 bent frames per side with a wire hoop at every bend, one straight shorting wire from a hot frame down to the ground frame under it, in Ø64 × 66 mm. From about 2.5 GHz up the beam peaks at 35–55° elevation, with a deep null straight up and the lower half-space 6–15 dB down; below 2 GHz the cage is too small to tilt its beam and radiates like a short dipole (peak at the horizon). SWR ≤ 2.0 over the band (precomputed NEC-2). Hold it by the coax with the cones up."
         : mini
         ? "The smallest sky-tilted bicone that still works: the small wire cage shrunk to Ø39 × 40 mm, 16 bent frames per side with a wire hoop at every bend and one straight shorting wire from a hot frame down to the ground frame under it. A box this small fits a sphere of radius 28 mm, and below that the Chu limit rules out a match at 960 MHz whatever the wire shape (bent, twisted and coiled frames were all tried), so this cage starts at 1.4 GHz: SWR ≤ 2.1 up to 6.4 GHz. Hold it by the coax with the cones up: the beam is tilted toward the sky (15–50° elevation)."
         : sh
@@ -718,6 +721,19 @@ export const skyconecagemini: AntennaDef = {
   build: (p) => buildCage(SKYCONE_W65, p),
 };
 
+export const skyconecagetilt: AntennaDef = {
+  id: "skyconecagetilt",
+  name: "Sky-tilted capped bicone, small wire cage, 45° beam (6.7:1)",
+  category: "Broadband",
+  traits: { pol: "vertical", pattern: "omni" },
+  summary: "The small wire cage re-optimised for its elevation pattern: from about 2.5 GHz up the beam peaks at 35–55° elevation with a null straight up and little below the horizon. 960 MHz–6.4 GHz at Ø64 × 66 mm, one shorting wire, SWR ≤ 2.0. Needs a ferrite sleeve (6 beads) on the coax.",
+  multiband: "broadband",
+  maxRatio: SKYCONE_T66.fHi / SKYCONE_T66.fLo,
+  params: PARAMS_CAGE,
+  defaults: { bands: "960e6-6400e6", d: 1e-3, coax: "ferrite" },
+  build: (p) => buildCage(SKYCONE_T66, p, "t66"),
+};
+
 export const skyconecage40: AntennaDef = {
   id: "skyconecage40",
   name: "Sky-tilted capped bicone, mini wire cage (4.6:1)",
@@ -771,4 +787,4 @@ export const skyconecage55: AntennaDef = {
 };
 
 /** Tabulated results per type id (simulate.ts). */
-export const SKYCONE_TABLES: Record<string, SkyconeTable> = { skycone7: SKYCONE_7, skycone8: SKYCONE_8, skycone21: SKYCONE_21, skyconecage: SKYCONE_W16, skyconecagemini: SKYCONE_W65, skyconecage40: SKYCONE_W40, skycone40: SKYCONE_S40, skyconecage44: SKYCONE_B44, skyconecage55: SKYCONE_A55 };
+export const SKYCONE_TABLES: Record<string, SkyconeTable> = { skycone7: SKYCONE_7, skycone8: SKYCONE_8, skycone21: SKYCONE_21, skyconecage: SKYCONE_W16, skyconecagemini: SKYCONE_W65, skyconecagetilt: SKYCONE_T66, skyconecage40: SKYCONE_W40, skycone40: SKYCONE_S40, skyconecage44: SKYCONE_B44, skyconecage55: SKYCONE_A55 };

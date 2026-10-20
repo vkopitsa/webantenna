@@ -232,7 +232,7 @@ describe("partsFor stays cheap", () => {
 describe("sky-cone wire cages", () => {
   const ids = (id: string) => { const { p, d } = setup(id); return partsFor(id, p, d).map((s) => s.id); };
   it("cages get a cut board and the M3 benders beside their own kit", () => {
-    for (const id of ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55"]) {
+    for (const id of ["skyconecage", "skyconecagemini", "skyconecagetilt", "skyconecage40", "skyconecage44", "skyconecage55"]) {
       const l = ids(id);
       expect(l, id).toEqual(expect.arrayContaining(["cut-board", "bender-lever-m3", "bender-plate-m3", "skycone-bend", "skycone-hoops", "skycone-cradle"]));
     }

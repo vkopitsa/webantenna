@@ -37,6 +37,10 @@ FS_MAIN = sorted(set(D.logf(int(os.environ.get("NFREQ", "18")), FLO, FHI))
                  | {float(f) for f in os.environ.get("FEXTRA", "").split(",") if f})   # FEXTRA: extra frequencies (Hz)
                                                  # in the cost, e.g. every 60 MHz over a narrow feature the log grid missed
 ELS = (15, 20, 25, 30, 35, 40, 45, 50)
+PATTERN = os.environ.get("PATTERN", "")         # "tilt": also score the elevation SHAPE (sky-tilted beam: peak near
+PEL = tuple(range(-45, 91, 5))                  # 30-50 deg, null overhead, little below the horizon) from PATF up,
+PATF = float(os.environ.get("PATF", "1.7e9"))   # sampled at PEL; WPAT weight per dB of shortfall
+WPAT = float(os.environ.get("WPAT", "0.15"))
 HUB_R = float(os.environ.get("HUB_R", "3.0e-3"))     # hub ring radius (m), wire_variant.py gives it per wire diameter
 GAP_MIN = 2.5e-3            # hot and ground parts closer than this (in rho, z) are rejected
 SPACE_MIN = 2.0e-3          # neighbouring frames closer than this (3D, centre to centre) are rejected
@@ -610,9 +614,14 @@ def evaluate(p, fs=None, per=20, abort=None, seg=SEG):
     order = sorted(fs)
     rows = []
     for i, f in enumerate(order):
-        z, gg = model(p, f, per=per, seg=seg)
-        g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))
-        rows.append(dict(f=f, z=z, swr=swr(z), g=g.tolist()))
+        if PATTERN:
+            z, gg = model(p, f, per=per, seg=seg, els=PEL)
+            g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))[::-1]      # NEC rows run down from the zenith
+            rows.append(dict(f=f, z=z, swr=swr(z), g=[float(g[PEL.index(e)]) for e in ELS], pel=g.tolist()))
+        else:
+            z, gg = model(p, f, per=per, seg=seg)
+            g = 10 * np.log10(np.mean(10 ** (gg / 10), axis=1))
+            rows.append(dict(f=f, z=z, swr=swr(z), g=g.tolist()))
         if abort is not None and i == 1 and max(r["swr"] for r in rows) > abort:
             break
     rows.sort(key=lambda r: r["f"])
@@ -629,6 +638,16 @@ COST = os.environ.get("COST", "minimax")        # "loss": mean mismatch loss (dB
                                                  # worst SWR: for a cage too small to reach SWR 2 at the bottom
 
 
+def tilt_penalty(g):
+    """dB of shortfall from the sky-tilted shape at one frequency (g at PEL): >= +3 dBi mean over 30-50 deg,
+    the lower hemisphere (-45..-15 deg) 6 dB under that, 65-80 deg 3 dB under it, overhead 12 dB under it."""
+    g = np.asarray(g)
+    at = lambda lo, hi: g[[i for i, e in enumerate(PEL) if lo <= e <= hi]]
+    up = 10 * np.log10(np.mean(10 ** (at(30, 50) / 10)))
+    return float(max(0.0, 3.0 - up) + max(0.0, at(-45, -15).max() - (up - 6)) + max(0.0, at(65, 80).max() - (up - 3))
+                 + max(0.0, at(90, 90).max() - (up - 12)))
+
+
 def cost_of(res):
     swrs = np.array([r["swr"] for r in res["main"]])
     if COST == "loss":
@@ -642,6 +661,8 @@ def cost_of(res):
     gavg = 10 * np.log10(np.mean(10 ** (G / 10), axis=1))
     gmin = G.min(axis=1)
     c += 0.1 * (np.mean(np.maximum(0, 1.0 - gavg)) + 0.5 * np.mean(np.maximum(0, -2.0 - gmin)) + 0.5 * max(0.0, -1.0 - gavg.min()))
+    if PATTERN:
+        c += WPAT * float(np.mean([tilt_penalty(r["pel"]) for r in res["main"] if r["f"] >= PATF] or [0.0]))
     c += 20 * max(0.0, res["H"] - HMAX) / 0.01 + 20 * max(0.0, res["D"] - DMAX) / 0.01
     return float(c)
 

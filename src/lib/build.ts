@@ -133,6 +133,7 @@ const NOT_TRIMMED: Record<string, string> = {
   pcbloop: "Tune the small loop with the capacitors: Cs sets the resonance, Cp the match. A trimmer capacitor for Cs makes this easy.",
   skyconecage: "Broadband: not tuned by trimming. The pin gap sets the top of the band and the rim height the bottom; check the SWR across the band.",
   skyconecagemini: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
+  skyconecagetilt: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
   skyconecage40: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
   skycone40: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",
   skyconecage44: "Broadband: not tuned by trimming. The pin gap sets the top of the band, the shorting wire and the rim height the bottom; check the SWR across the band.",

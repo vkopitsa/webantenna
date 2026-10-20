@@ -155,7 +155,7 @@ describe("bendRecipes", () => {
   });
 
   it("sky-cone wire cages: one recipe per frame, from Design.frames; sheets, hoops and coils get none", () => {
-    for (const id of ["skyconecage", "skyconecagemini", "skyconecage40", "skyconecage44", "skyconecage55"]) {
+    for (const id of ["skyconecage", "skyconecagemini", "skyconecagetilt", "skyconecage40", "skyconecage44", "skyconecage55"]) {
       const { def, p, d } = build(id), rs = recipes(id), cuts = buildPack(def, p, d).cuts;
       expect(rs.map((r) => r.tag), id).toEqual(["H", "G"]);
       for (const r of rs) {

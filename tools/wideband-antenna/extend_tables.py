@@ -10,7 +10,7 @@ import os
 import re
 import sys
 
-WIRE = {"W16": "SKYCONE_W16", "W65": "SKYCONE_W65", "W40": "SKYCONE_W40", "B44f": "SKYCONE_B44", "A55": "SKYCONE_A55", "S40": "SKYCONE_S40"}
+WIRE = {"W16": "SKYCONE_W16", "W65": "SKYCONE_W65", "W40": "SKYCONE_W40", "B44f": "SKYCONE_B44", "A55": "SKYCONE_A55", "S40": "SKYCONE_S40", "T66": "SKYCONE_T66"}
 SOLID = {"S73": "SKYCONE_7", "B": "SKYCONE_8"}
 TOL = float(os.environ.get("TOL", "0.15"))
 r1 = lambda a: [round(v, 1) for v in a]
@@ -66,8 +66,9 @@ def extend(obj, app, bare, variants):
 def main(path, d):
     src = open(path).read()
     load = lambda name: json.load(open(os.path.join(d, name)))
-    jobs = [(name, f"app_{D}.json", f"bare_{D}.json", None) for D, name in SOLID.items()] + \
-           [(name, None, None, D) for D, name in WIRE.items()]
+    only = os.environ.get("ONLY", "").split(",") if os.environ.get("ONLY") else None   # ONLY=T66: just those designs
+    jobs = [(name, f"app_{D}.json", f"bare_{D}.json", None) for D, name in SOLID.items() if not only or D in only] + \
+           [(name, None, None, D) for D, name in WIRE.items() if not only or D in only]
     for name, fa, fb, D in jobs:
         m = re.search(rf"^export const {name}: SkyconeTable = (\{{.*\}});$", src, re.M)
         assert m, f"{name} not found in {path}"

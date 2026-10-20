@@ -26,6 +26,9 @@ The same compact size can be bent from **Ø1 mm wire**: 16 frames per side plus 
 NEC-2 SWR ≤ 1.97 over 960 MHz – 6.4 GHz); see [Wire-cage version](#wire-cage-version-w16).
 One straight **shorting wire** from a hot frame to the ground frame makes the cage smaller: design **W65**,
 Ø65 × 65 mm, NEC-2 SWR ≤ 1.85 over the same band; see [Smaller wire cage](#smaller-wire-cage-one-shorting-wire-w65).
+Re-optimised for the elevation pattern instead (beam peak at 35–55° from 2.5 GHz up, a null overhead, the lower
+half-space 6–15 dB down), the same cage becomes design **T66**, Ø64 × 66 mm, SWR ≤ 2.0; see
+[Sky-tilted beam](#sky-tilted-beam-the-small-cage-re-optimised-for-its-pattern-t66).
 Ø40 × 40 mm is below the physical floor for 960 MHz (SWR ≥ 4.65 with a perfect match; bent, twisted and coiled frames
 do not change that), but a 40 mm cage covers **1.4 – 6.4 GHz** at SWR ≤ 2.1 (design **W40**, in the app);
 see [How small can the cage go?](#how-small-can-the-cage-go-ø40--40-mm-study).
@@ -40,7 +43,7 @@ see [Two antennas instead of one](#two-antennas-instead-of-one-960-mhz--136-ghz-
 ![Sections of designs B and A at the same scale](fpv-detector/A_B_section.png)
 
 **In the app:** the designs are antenna types in the Broadband group, **"Sky-tilted capped bicone (8:1)"** (B),
-**"(21:1)"** (A), **"compact (6.7:1)"** (S73), **"wire cage (6.7:1)"** (W16), **"small wire cage (6.7:1)"** (W65), **"mini wire cage (4.6:1)"** (W40, 1.4 – 6.4 GHz) and **"mini wire cage 7 GHz (5.1:1)"** (B44f, 1.36 – 7 GHz, choke sleeve instead of ferrite) and **"low-band wire cage (1.4:1)"** (A55, 960 MHz – 1.36 GHz, two coiled shorting wires and two capacitors, two choke tubes). The band editor scales the shape (e.g. 1–8 GHz); Simulation shows this study's
+**"(21:1)"** (A), **"compact (6.7:1)"** (S73), **"wire cage (6.7:1)"** (W16), **"small wire cage (6.7:1)"** (W65), **"small wire cage, 45° beam (6.7:1)"** (T66, W65 re-optimised for the pattern), **"mini wire cage (4.6:1)"** (W40, 1.4 – 6.4 GHz) and **"mini wire cage 7 GHz (5.1:1)"** (B44f, 1.36 – 7 GHz, choke sleeve instead of ferrite) and **"low-band wire cage (1.4:1)"** (A55, 960 MHz – 1.36 GHz, two coiled shorting wires and two capacitors, two choke tubes). The band editor scales the shape (e.g. 1–8 GHz); Simulation shows this study's
 tabulated MoM sweep and elevation pattern, scaled to the size; Build lists the flat patterns and
 prints them at 1:1 (`src/lib/antennas/skycone.ts`). The name: an *asymmetric bicone*, or an *inverted
 discone* (cone on top as the hot element, a shallow ground cone below), with a capped top (rim + lid).
@@ -458,6 +461,40 @@ cut list, 1:1 frame template (an × marks the wire's two ends), the printed kit,
 Simulation is the NEC-2 table (`export_shaped_table.py`: 1.5 mm segments, 64 frequencies, gain is
 the mean over 8 azimuths because the wire breaks the 16-fold symmetry). The Radiation view puts the
 frame currents on all 16 frames and the wire's current on the wire alone.
+
+### Sky-tilted beam: the small cage re-optimised for its pattern (T66)
+
+W65's beam climbs with frequency: it peaks at the horizon up to 1.3 GHz, at 45° near 2.9 GHz and at 60–65° above 4 GHz,
+with only −5…−7 dBi overhead at 5–6 GHz. The goal for T66 was the 2.9 GHz shape over the whole band: a peak near
+45° elevation (about +3.5…+4 dBi), a deep null straight up, about +1 dBi at the horizon and the lower half-space well down.
+
+The cost (`family10.py`, `PATTERN=tilt`) keeps W65's SWR term (minimax with the 1.85 floor) and adds, per frequency
+from `PATF` = 1.7 GHz up, the dB by which the elevation cut misses this shape (`tilt_penalty`): the mean gain over 30–50°
+below +3 dBi, the lower hemisphere (−45…−15°) less than 6 dB under it, 65–80° less than 3 dB under it, the zenith less
+than 12 dB under it, weighted by `WPAT` = 0.15 per dB. The pattern is sampled at −45…90° in 5° steps. Below about 2 GHz
+the cage is 0.2–0.3 λ across and radiates like a short dipole whatever its shape, so the pattern is not scored there.
+
+CMA-ES from W65 in the same Ø66 box (`results/runT.sh`: t66a = W65's free set plus the brim, t66b = every family-11
+parameter with twice the pattern weight and a 2.0 SWR floor), stopped after 91 generations. t66a won (cost 2.23 against
+W65's 2.67; t66b reached SWR 2.11 for a similar pattern). Its 1 mm brim made no difference and was dropped (the app draws
+straight frames), giving `designs/T66.json`. `tilt_check.py` prints the per-frequency score of any design.
+
+| | W65 | **T66** |
+|---|---|---|
+| Size | Ø65.1 × 64.9 mm | **Ø64.3 × 65.6 mm** |
+| Worst SWR, 960 MHz – 6.4 GHz (app table: 64 points, 1.5 mm segments) | 1.74 | **1.99** (at 4.4–4.7 GHz; the 18-point, 2 mm search grid read 1.85) |
+| Peak elevation, 1 / 2 / 3 / 4 / 5 / 6.4 GHz | 0 / 20 / 45 / 60 / 65 / 65° | **0 / 25 / 45 / 50 / 55 / 55°** |
+| Gain at 45°, 3 / 4.5 / 6.4 GHz | 3.2 / 4.2 / 0.9 dBi | **3.8 / 4.9 / 1.8 dBi** |
+| Zenith, 4–6.4 GHz | −5 … −11 dBi | **−9 … −18 dBi** |
+| −30° elevation, 2.5–6.4 GHz | −4 … −10 dBi | **−3.6 … −12 dBi** |
+
+T66 at 3 GHz: peak +3.8 dBi at 45°, −1.9 dBi at the horizon, −11 dBi overhead, −9 dBi at −30°. Below 2 GHz it is
+the same as W65 (peak at the horizon, +1.4 dBi). The coax behaves as on W65 (`cage_cable.py`, 995 MHz – 2 GHz):
+bare 15–35 cm up to 6.6, one bead up to 2.4, the 6-bead sleeve ≤ 1.72.
+
+T66 is in the app as **"Sky-tilted capped bicone, small wire cage, 45° beam (6.7:1)"** (`skyconecagetilt`). It has W65's
+build (cut list, 1:1 frame template, printed kit, NEC-2 export) and a NEC-2 table made the same way (`results/runT66.sh`:
+the Ø1 mm base, the Ø0.5 / 0.8 / 1.5 mm wire variants, the bare-cable rows and the extension to 10 f_lo).
 
 ### How small can the cage go? Ø40 × 40 mm study
 
