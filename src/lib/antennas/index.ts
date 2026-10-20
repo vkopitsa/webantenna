@@ -80,4 +80,7 @@ export const ANTENNAS: AntennaDef[] = [dipole, fandipole, groundplane, spring, j
 /** The broadband type with the widest single-antenna coverage (maxRatio). */
 export const WIDEST = ANTENNAS.reduce<AntennaDef | null>((w, a) => (a.maxRatio && (!w || a.maxRatio > w.maxRatio!) ? a : w), null)!;
 /** Null prototype: ids come from share links and localStorage, and "constructor" / "__proto__" must not resolve. */
+/** Picker order of the categories (a def whose category is missing here is not listed). */
+export const CATEGORIES = ["Wire", "Vertical", "Directional", "Circular polarisation", "Printed", "Broadband"] as const;
+
 export const ANTENNA_BY_ID: Record<string, AntennaDef> = Object.assign(Object.create(null) as Record<string, AntennaDef>, Object.fromEntries(ANTENNAS.map((a) => [a.id, a])));

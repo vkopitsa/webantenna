@@ -279,6 +279,8 @@ export const UK: Record<string, string> = {
   "Reset parameters": "Скинути параметри",
   "This panel failed to render with these parameters.": "Цю панель не вдалося показати з такими параметрами.",
   "Antenna type": "Тип антени",
+  "Search antennas": "Пошук антен",
+  "No matches": "Нічого не знайдено",
   "Parameters": "Параметри",
   "English": "English",
   "+ Add band": "+ Додати діапазон",

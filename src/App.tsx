@@ -6,7 +6,8 @@ import { AntennaPicker, ParamsPanel } from "./components/Sidebar";
 import { Preview } from "./components/Preview";
 import { Results } from "./components/Results";
 import { Exports } from "./components/Exports";
-import { Select } from "./components/inputs";
+import { Section, Select } from "./components/inputs";
+import { AntennaSelect } from "./components/AntennaSelect";
 import { SimPanel } from "./components/SimPanel";
 import { SynthPanel } from "./components/SynthPanel";
 import { BuildPanel } from "./components/BuildPanel";
@@ -82,6 +83,7 @@ export default function App() {
         <aside className={"side" + (drawer ? " open" : "")} inert={mobile && !drawer} aria-label={t("Antenna and parameters")}>
           <div className="panel">
             <button className="mobile-only drawer-close" onClick={() => setDrawer(false)} aria-label={t("Close")}>✕</button>
+            <Section title="Antenna type"><AntennaSelect onPick={() => setDrawer(false)} /></Section>
             <ParamsPanel />
             <AntennaPicker onPick={() => setDrawer(false)} />
           </div>

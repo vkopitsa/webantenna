@@ -1,4 +1,4 @@
-import { ANTENNA_BY_ID, ANTENNAS } from "../lib/antennas";
+import { ANTENNA_BY_ID, ANTENNAS, CATEGORIES } from "../lib/antennas";
 import type { ParamDef } from "../lib/types";
 import { get, resetParams, set, setParam, useStore } from "../store";
 import { useT } from "../i18n";
@@ -71,7 +71,6 @@ function BandsInput({ def, value }: { def: ParamDef; value: string }) {
   );
 }
 
-const CATEGORIES = ["Wire", "Vertical", "Directional", "Circular polarisation", "Printed", "Broadband"] as const;
 
 export function AntennaPicker({ onPick }: { onPick?: () => void }) {
   const t = useT();
