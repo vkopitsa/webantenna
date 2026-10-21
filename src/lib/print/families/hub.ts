@@ -1,6 +1,6 @@
 import { num, type Design, type Params, type Vec3 } from "../../types";
 import { msg, type PartSpec } from "../parts";
-import { CLEAR, FLANGE_PITCH, M3_HOLE, M3_NUT, WALL, mm } from "../rules";
+import { CLEAR, FLANGE_PITCH, M3_HOLE, M3_NUT, WALL, WIRE_CLEAR, mm } from "../rules";
 import { add, bar, box, channel, flangeCut, rod, scale, sub, unit, zipSlot, type V3 } from "../shapes";
 import { around, merge, type Ext } from "./extent";
 
@@ -34,7 +34,7 @@ export function radialDirs(d: Design): V3[] {
  *  model's radial direction; the socket (lug) starts `lugFrom` mm along it, outside the flange footprint. */
 export function hubGeometry(d: Design) {
   const wireD = mm(2 * d.wires.find((w) => w.group === "ground")!.r);
-  const ch = wireD + CLEAR, w = Math.max(ch + 2 * WALL, 8);
+  const ch = wireD + WIRE_CLEAR, w = Math.max(ch + 2 * WALL, 8);
   const rLug = FLANGE_CORNER + w / Math.SQRT2 + 1;
   const paths = radialDirs(d).map((dir) => {
     const c = Math.hypot(dir[0], dir[1]), h: V3 = [dir[0] / c, dir[1] / c, 0];
@@ -114,7 +114,7 @@ const mmv = (p: Vec3): V3 => [mm(p[0]), mm(p[1]), mm(p[2])];
 export function disconeGeometry(d: Design) {
   const live = d.wires.filter((x) => !x.drawOnly && !x.necOnly);
   const disc = live.filter((x) => x.group === "driven"), cone = live.filter((x) => x.group === "ground");
-  const wireD = mm(2 * disc[0].r), ch = wireD + CLEAR, w = Math.max(ch + 2 * WALL, 8);
+  const wireD = mm(2 * disc[0].r), ch = wireD + WIRE_CLEAR, w = Math.max(ch + 2 * WALL, 8);
   const dir = (x: (typeof live)[number]) => unit(sub(mmv(x.b), mmv(x.a)));
   const discDirs = disc.map(dir), coneDirs = cone.map(dir);
   const half = Math.atan2(Math.hypot(coneDirs[0][0], coneDirs[0][1]), -coneDirs[0][2]);   // from the axis

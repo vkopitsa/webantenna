@@ -1,6 +1,6 @@
 import type { Design, Vec3 } from "../../types";
 import { FAIL, PartError, msg, type PartSpec } from "../parts";
-import { CLEAR, mm } from "../rules";
+import { WIRE_CLEAR, mm } from "../rules";
 import { add, box, channel, flangeCut, scale, sub, unit, type V3 } from "../shapes";
 
 /** Biquad: a slim standoff that holds the element at its height over the reflector, only near the feed. */
@@ -39,7 +39,7 @@ export function biquadParts(d: Design): PartSpec[] {
     id: "biquad-standoff", title: STANDOFF_STRINGS[0], use: "holder", qty: 1,
     purpose: msg(STANDOFF_STRINGS[1], { len: g.X / 1000 }), howTo: STANDOFF_HOWTO.map((s) => msg(s)),
     build: (M) => {
-      const ch = g.wireD + CLEAR;
+      const ch = g.wireD + WIRE_CLEAR;
       if (g.gap / 2 + ch / 2 > RP - 1) throw new PartError(msg(FAIL.thick));
       const ys = g.ends.map((e) => e[1]), yLo = Math.min(...ys) - ch / 2, yHi = Math.max(...ys) + ch / 2;
       const body = M.Manifold.union([box(M, [-SQ / 2, -SQ / 2, 0], [SQ / 2, SQ / 2, PLATE_T]).rotate([0, 0, 45]), M.Manifold.cylinder(g.X, RP, RP, 64)]);

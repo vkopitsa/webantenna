@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
 import { loadManifold } from "../manifold";
-import { CLEAR } from "../rules";
+import { CLEAR, WIRE_CLEAR } from "../rules";
 import { toZ, unit, type V3 } from "../shapes";
 import { capTipSetback, cornerCap, moxonCapArgs, moxonGeometry, moxonHubLayout, quadGeometry, quadHubLayout } from "./spreader";
 import { along, ball, inside, part, setup } from "./testkit";
@@ -86,7 +86,7 @@ describe("corner caps", () => {
           expect(inside(cap, wire), `${name} ${rodD} cap`).toBeLessThan(1e-2);
           expect(inside(rodVol, wire), `${name} ${rodD} rod`).toBeLessThan(1e-2);
         }
-        expect(inside(cap, ball(M, a.at, wireD + 2)), `${name} corner held`).toBeGreaterThan(1);
+        expect(inside(cap, ball(M, a.at, wireD + WIRE_CLEAR + 2)), `${name} corner held`).toBeGreaterThan(1);
         const out = unit(a.legs[0].map((v, i) => -(v + a.legs[1][i])) as V3);
         const so = (rodD + CLEAR) / 2 + 2;
         const at = (k: number) => a.at.map((v, i) => v + out[i] * k) as V3;

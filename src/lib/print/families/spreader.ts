@@ -2,7 +2,7 @@ import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Design, Params, Vec3 } from "../../types";
 import { num } from "../../types";
 import { msg, type PartSpec } from "../parts";
-import { CLEAR, WALL, mm } from "../rules";
+import { CLEAR, WALL, WIRE_CLEAR, mm } from "../rules";
 import { add, bar, box, channel, m3, rod, scale, sub, toZ, unit, zipSlot, type V3 } from "../shapes";
 import { around, merge, type Ext } from "./extent";
 
@@ -70,7 +70,7 @@ export function quadGeometry(d: Design) {
 
 /** Where the rod stops behind the corner: far enough that neither wire leg meets the rod volume. */
 export function capTipSetback(dir: V3, legs: [V3, V3], rodD: number, wireD: number): number {
-  const rb = rodD + CLEAR, ch = wireD + CLEAR, R = rb / 2 + ch / 2 + 0.5;
+  const rb = rodD + CLEAR, ch = wireD + WIRE_CLEAR, R = rb / 2 + ch / 2 + 0.5;
   let t = ch / 2 + WALL + 1;
   for (const l of legs) {
     const c = -(dir[0] * l[0] + dir[1] * l[1] + dir[2] * l[2]);   // cos of the angle between -dir and the leg
@@ -83,7 +83,7 @@ export function capTipSetback(dir: V3, legs: [V3, V3], rodD: number, wireD: numb
  *  sides away from the corner. The groove is open towards the outside of the corner, so wire tension pulls the wire in.
  *  The rod occupies 30 mm behind `at - dir * capTipSetback(...)`. */
 export function cornerCap(M: ManifoldToplevel, at: V3, dir: V3, legs: [V3, V3], rodD: number, wireD: number): Manifold {
-  const rb = rodD + CLEAR, ch = wireD + CLEAR, so = rb / 2 + WALL;
+  const rb = rodD + CLEAR, ch = wireD + WIRE_CLEAR, so = rb / 2 + WALL;
   const tip = sub(at, scale(dir, capTipSetback(dir, legs, rodD, wireD)));   // rod end
   const body = rod(M, sub(tip, scale(dir, 30)), add(at, scale(dir, ch / 2 + WALL)), 2 * so);
   const out = unit(scale(add(legs[0], legs[1]), -1));
@@ -127,7 +127,7 @@ function socketHub(M: ManifoldToplevel, dirs: V3[], rodD: number, core: number):
   const body = M.Manifold.union(dirs.map((u) => bar(M, scale(u, core - 2), scale(u, core + SOCK), w)));
   const cuts = dirs.flatMap((u) => {
     const s = scale(u, core + SOCK / 2);
-    return [channel(M, scale(u, core), scale(u, core + SOCK + w), rodD), m3(M, s[0], s[1], s[2], s[2] + w / 2 + 1, true)];
+    return [channel(M, scale(u, core), scale(u, core + SOCK + w), rodD, CLEAR), m3(M, s[0], s[1], s[2], s[2] + w / 2 + 1, true)];
   });
   return { body, cuts };
 }
@@ -156,7 +156,7 @@ export function moxonParts(p: Params, d: Design): PartSpec[] {
     {
       id: "moxon-gap", title: SPREADER_STRINGS[3], use: "holder", qty: 2, purpose: msg(SPREADER_STRINGS[8], L(g.C)), howTo: SPREADER_HOWTO.gap.map((s) => msg(s)),
       build: (M) => {
-        const CS = M.CrossSection, ch = g.wireD + CLEAR, R = ch / 2 + WALL + 1;
+        const CS = M.CrossSection, ch = g.wireD + WIRE_CLEAR, R = ch / 2 + WALL + 1;
         const outline = CS.hull([CS.circle(R, 32).translate([-g.C / 2, 0]), CS.circle(R, 32).translate([g.C / 2, 0])]);
         return [outline.subtract(CS.union([CS.circle(ch / 2, 24).translate([-g.C / 2, 0]), CS.circle(ch / 2, 24).translate([g.C / 2, 0])])).extrude(4)];
       },
@@ -175,7 +175,7 @@ export function quadParts(p: Params, d: Design): PartSpec[] {
       build: (M) => {
         const h = socketHub(M, dirs, rodD, core);
         const body = M.Manifold.union([h.body, rod(M, [-w / 2, 0, 0], [w / 2, 0, 0], 2 * core + 2)]);
-        return [body.subtract(M.Manifold.union([...h.cuts.filter((_, i) => i % 2 === 0), channel(M, [-w, 0, 0], [w, 0, 0], bd), m3(M, 0, 0, 0, core + 1, true)]))];
+        return [body.subtract(M.Manifold.union([...h.cuts.filter((_, i) => i % 2 === 0), channel(M, [-w, 0, 0], [w, 0, 0], bd, CLEAR), m3(M, 0, 0, 0, core + 1, true)]))];
       },
     },
     {
@@ -187,7 +187,7 @@ export function quadParts(p: Params, d: Design): PartSpec[] {
 
 /** A corner cap (mm): the rod sleeve from 30 mm behind the rod end to just past the wire corner. */
 function capExtent(at: V3, dir: V3, legs: [V3, V3], rodD: number, wireD: number): Ext {
-  const ch = wireD + CLEAR, so = (rodD + CLEAR) / 2 + WALL;
+  const ch = wireD + WIRE_CLEAR, so = (rodD + CLEAR) / 2 + WALL;
   const tip = sub(at, scale(dir, capTipSetback(dir, legs, rodD, wireD)));
   return around([sub(tip, scale(dir, 30)), add(at, scale(dir, ch / 2 + WALL))], so);
 }
@@ -203,7 +203,7 @@ export function moxonHardwareBox(p: Params, d: Design): Ext {
   const corners: V3[] = [[g.xE, g.yA, 0], [g.xE, -g.yA, 0], [g.xR, g.yA, 0], [g.xR, -g.yA, 0]];
   const { dirs, core } = moxonHubLayout(d, rodD);
   const caps = corners.map((c, i) => { const a = moxonCapArgs(c, i < 2); return capExtent(a.at, a.dir, a.legs, rodD, g.wireD); });
-  const R = (g.wireD + CLEAR) / 2 + WALL + 1;
+  const R = (g.wireD + WIRE_CLEAR) / 2 + WALL + 1;
   const tips = live(d).flatMap((x) => [mmv(x.a), mmv(x.b)]).filter((q) => Math.abs(q[0] - g.tipD) < 1e-3 || Math.abs(q[0] - g.tipR) < 1e-3);
   return merge(hubExtent(dirs, rodD, core, [0, 0, 0], w), { lo: [-8, -6, -w / 2 - 30], hi: [8, 6, 0] }, ...caps, ...(tips.length ? [around(tips, R)] : []));
 }

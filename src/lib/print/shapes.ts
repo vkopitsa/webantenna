@@ -1,5 +1,5 @@
 import type { CrossSection, Manifold, ManifoldToplevel } from "manifold-3d";
-import { CLEAR, FLANGE_BODY, FLANGE_PITCH, M3_HOLE, M3_NUT, M3_NUT_DEPTH, SEG_H, ZIP_T, ZIP_W } from "./rules";
+import { CLEAR, FLANGE_BODY, FLANGE_PITCH, M3_HOLE, M3_NUT, M3_NUT_DEPTH, SEG_H, WIRE_CLEAR, ZIP_T, ZIP_W } from "./rules";
 
 /** Building blocks for printed parts. Everything is in mm. */
 export type V3 = [number, number, number];
@@ -24,10 +24,10 @@ export const bar = (M: M, a: V3, b: V3, w: number): Manifold =>
 /** Axis-aligned box between two corners. */
 export const box = (M: M, lo: V3, hi: V3): Manifold => M.Manifold.cube(sub(hi, lo), false).translate(lo);
 
-/** Channel for a wire or tube of diameter d from a to b: d + clearance, 1 mm past both ends so it cuts cleanly. */
-export function channel(M: M, a: V3, b: V3, d: number): Manifold {
+/** Channel for a wire (or, with clear = CLEAR, a rod) of diameter d from a to b: d + clear, 1 mm past both ends so it cuts cleanly. */
+export function channel(M: M, a: V3, b: V3, d: number, clear = WIRE_CLEAR): Manifold {
   const u = unit(sub(b, a));
-  return rod(M, sub(a, u), add(b, u), d + CLEAR);
+  return rod(M, sub(a, u), add(b, u), d + clear);
 }
 
 /** Vertical M3 screw hole at (x, y) from z0 to z1, with a hexagonal nut pocket at the top (z1) or the bottom (z0). */

@@ -1,7 +1,7 @@
 import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Design, Vec3, Wire } from "../../types";
 import { msg, type PartSpec } from "../parts";
-import { CLEAR, INSULATE, WALL, mm } from "../rules";
+import { INSULATE, WALL, WIRE_CLEAR, mm } from "../rules";
 import { add, bar, box, channel, rod, scale, sub, unit, zipSlot, type V3 } from "../shapes";
 import { around, merge, type Ext } from "./extent";
 
@@ -42,7 +42,7 @@ export function dipoleArms(d: Design, groups: string[] = ["driven"]): { wireD: n
 
 /** The centre insulator's hub block (mm, without the arm lugs): w is the lug and hub thickness, zEye the hanging eye. */
 export function centreHubBox(gap: number, wireD: number): { w: number; zEye: number; top: number; lo: V3; hi: V3 } {
-  const ch = wireD + CLEAR;
+  const ch = wireD + WIRE_CLEAR;
   const w = Math.max(3 * ch + 4 * WALL, 12);                 // lug and hub thickness
   const zEye = ch / 2 + 4 + WALL + 3, top = zEye + 3 + WALL;
   return { w, zEye, top, lo: [-w / 2, -(gap / 2 + 6), -30], hi: [w / 2, gap / 2 + 6, top] };
@@ -51,7 +51,7 @@ export function centreHubBox(gap: number, wireD: number): { w: number; zEye: num
 /** Centre insulator body for arms leaving a feed gap along y: hub, one socket per arm, solder window, hanging eye, coax
  *  zip-tie slots, and (dipole only) a tie-off hole beside each arm. */
 export function centreBlock(M: ManifoldToplevel, arms: { start: V3; dir: V3 }[], gap: number, wireD: number, tieOff: boolean): Manifold {
-  const ch = wireD + CLEAR;
+  const ch = wireD + WIRE_CLEAR;
   const { w, zEye, lo, hi } = centreHubBox(gap, wireD);
   const hub = box(M, lo, hi);
   const lugs = arms.map((a) => bar(M, a.start, add(a.start, scale(a.dir, LUG)), w));
@@ -76,7 +76,7 @@ export function centreBlock(M: ManifoldToplevel, arms: { start: V3; dir: V3 }[],
 
 export function dipoleParts(d: Design): PartSpec[] {
   const { wireD, gap, arms } = dipoleArms(d);
-  const ch = wireD + CLEAR;
+  const ch = wireD + WIRE_CLEAR;
   const droop = (Math.asin(-arms[0].dir[2]) * 180) / Math.PI;
   const centre: PartSpec = {
     id: "dipole-centre", title: "Dipole centre insulator", use: "holder", qty: 1,
@@ -145,7 +145,7 @@ export function fanSpreaders(d: Design): { Y: number; holes: { p: V3; u: V3 }[] 
 
 export function fanParts(d: Design): PartSpec[] {
   const { wireD, gap, arms } = dipoleArms(d, ["driven", "parasitic"]);
-  const r = (wireD + CLEAR) / 2, m0 = r + WALL + 2;
+  const r = (wireD + WIRE_CLEAR) / 2, m0 = r + WALL + 2;
   const centre: PartSpec = {
     id: "fan-centre", title: FAN_STRINGS[0], use: "holder", qty: 1,
     purpose: msg(FAN_STRINGS[2], arms.length / 2, { len: gap / 1000 }), howTo: FAN_HOWTO.centre.map((s) => msg(s)),
@@ -178,7 +178,7 @@ export function dipoleHardwareBox(d: Design, fan: boolean): Ext {
   const hb = centreHubBox(gap, wireD);
   const parts: Ext[] = [{ lo: hb.lo, hi: hb.hi }, ...arms.map((a) => around([a.start, add(a.start, scale(a.dir, LUG))], hb.w / 2))];
   if (fan) {
-    const r = (wireD + CLEAR) / 2, m0 = r + WALL + 2;
+    const r = (wireD + WIRE_CLEAR) / 2, m0 = r + WALL + 2;
     for (const s of fanSpreaders(d)) {
       const zs = s.holes.map((h) => h.p[2]), ext = Math.max(...s.holes.map((h) => (r + 2 * Math.abs(h.u[2])) / h.u[1])), m = Math.max(m0, ext + WALL);
       for (const sg of [1, -1]) parts.push({ lo: [-m0, sg * s.Y - 2, Math.min(...zs) - m], hi: [m0, sg * s.Y + 2, Math.max(...zs) + m] });

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
 import { loadManifold } from "../manifold";
-import { CLEAR, INSULATE } from "../rules";
+import { CLEAR, INSULATE, WIRE_CLEAR } from "../rules";
 import { D_IN, D_LUG, disconeGeometry } from "./hub";
 import { along, inside, part, setup } from "./testkit";
 
@@ -18,12 +18,12 @@ describe("discone hub", () => {
       const hub = part("discone", "discone-hub", c).build(M)[0];
       for (const u of g.coneDirs) {
         expect(inside(hub, along(M, [0, 0, 0], u, g.sN + 2, g.sN + D_LUG, g.wireD)), JSON.stringify(c)).toBeLessThan(1e-3);
-        expect(inside(hub, along(M, [0, 0, 0], u, g.sN + 5, g.sN + D_LUG, g.wireD + CLEAR + 2))).toBeGreaterThan(1);
+        expect(inside(hub, along(M, [0, 0, 0], u, g.sN + 5, g.sN + D_LUG, g.wireD + WIRE_CLEAR + 2))).toBeGreaterThan(1);
       }
       for (const u of g.discDirs) {
         expect(u[2]).toBeCloseTo(0, 9);
         expect(inside(hub, along(M, [0, 0, g.discZ], u, D_IN, D_IN + D_LUG, g.wireD))).toBeLessThan(1e-3);
-        expect(inside(hub, along(M, [0, 0, g.discZ], u, D_IN + 4, D_IN + D_LUG, g.wireD + CLEAR + 2))).toBeGreaterThan(1);
+        expect(inside(hub, along(M, [0, 0, g.discZ], u, D_IN + 4, D_IN + D_LUG, g.wireD + WIRE_CLEAR + 2))).toBeGreaterThan(1);
       }
     }
   }, 180_000);

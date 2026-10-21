@@ -5,7 +5,7 @@ import type { Params } from "../../types";
 import { loadManifold } from "../manifold";
 import { buildPart, partsFor } from "..";
 import { rod, type V3 } from "../shapes";
-import { CLEAR, FLANGE_PITCH, INSULATE, M3_NUT, ZIP_T, ZIP_W } from "../rules";
+import { CLEAR, FLANGE_PITCH, INSULATE, M3_NUT, WIRE_CLEAR, ZIP_T, ZIP_W } from "../rules";
 import { dipoleArms } from "./centre";
 import { hubGeometry, radialDirs, PLATE } from "./hub";
 import { yagiStraps } from "./boom";
@@ -32,7 +32,7 @@ describe("dipole", () => {
       const centre = part("dipole", "dipole-centre", { droop }).build(M)[0];
       for (const a of arms) {
         expect(inside(centre, along(a.start, a.dir, 10, 30, wireD))).toBeLessThan(1e-3);
-        expect(inside(centre, along(a.start, a.dir, 10, 30, wireD + CLEAR + 2))).toBeGreaterThan(1);
+        expect(inside(centre, along(a.start, a.dir, 10, 30, wireD + WIRE_CLEAR + 2))).toBeGreaterThan(1);
       }
     }
   });
@@ -48,7 +48,7 @@ describe("ground plane", () => {
       const hub = part("groundplane", "gp-hub", c).build(M)[0];
       for (const r of g.paths) {
         expect(inside(hub, along(r.start, r.dir, 2, r.lugFrom + 30, g.wireD)), JSON.stringify(c)).toBeLessThan(1e-3);
-        expect(inside(hub, along(r.start, r.dir, r.lugFrom + 5, r.lugFrom + 30, g.wireD + CLEAR + 2))).toBeGreaterThan(1);
+        expect(inside(hub, along(r.start, r.dir, r.lugFrom + 5, r.lugFrom + 30, g.wireD + WIRE_CLEAR + 2))).toBeGreaterThan(1);
       }
     }
   }, 60_000);

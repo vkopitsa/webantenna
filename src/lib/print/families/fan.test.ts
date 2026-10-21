@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
 import { loadManifold } from "../manifold";
 import { buildPart, partsFor } from "..";
-import { CLEAR } from "../rules";
+import { WIRE_CLEAR } from "../rules";
 import { dipoleArms, fanSpreaders } from "./centre";
 import { along, inside, setup } from "./testkit";
 
@@ -33,7 +33,7 @@ describe("fan dipole", () => {
       const part = partsFor("fandipole", p, d)[i + 1].build(M)[0];
       for (const h of s.holes) {
         expect(inside(part, along(M, h.p, h.u, -3, 3, wireD))).toBeLessThan(1e-3);
-        expect(inside(part, along(M, h.p, h.u, -1.5, 1.5, wireD + CLEAR + 2))).toBeGreaterThan(0.1);
+        expect(inside(part, along(M, h.p, h.u, -1.5, 1.5, wireD + WIRE_CLEAR + 2))).toBeGreaterThan(0.1);
       }
     });
   });
@@ -54,7 +54,7 @@ describe("fan dipole", () => {
           expect(h.u[1], tag).toBeGreaterThanOrEqual(0.5);
           const k = 3 / h.u[1];
           expect(inside(part, along(M, h.p, h.u, -k, k, wireD)), tag).toBeLessThan(1e-3);
-          expect(inside(part, along(M, h.p, h.u, -1.5, 1.5, wireD + CLEAR + 2)), tag).toBeGreaterThan(0.1);
+          expect(inside(part, along(M, h.p, h.u, -1.5, 1.5, wireD + WIRE_CLEAR + 2)), tag).toBeGreaterThan(0.1);
         }
       });
     }

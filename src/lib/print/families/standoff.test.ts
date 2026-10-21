@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import type { ManifoldToplevel } from "manifold-3d";
 import { loadManifold } from "../manifold";
 import { buildPart } from "..";
+import { WIRE_CLEAR } from "../rules";
 import { biquadGeometry } from "./standoff";
 import { along, inside, part, setup } from "./testkit";
 
@@ -23,7 +24,7 @@ describe("biquad standoff", () => {
       const s = spec.build(M)[0];
       for (const l of g.legs) {
         expect(inside(s, along(M, l.at, l.dir, 1, 12, g.wireD))).toBeLessThan(1e-3);
-        expect(inside(s, along(M, l.at, l.dir, 1, 9, g.wireD + 2))).toBeGreaterThan(0.1);
+        expect(inside(s, along(M, l.at, l.dir, 1, 9, g.wireD + WIRE_CLEAR + 2))).toBeGreaterThan(0.1);
       }
       const [a, b] = g.ends;
       expect(inside(s, along(M, a, [0, Math.sign(b[1] - a[1]), 0], 0, Math.abs(b[1] - a[1]), g.wireD))).toBeLessThan(1e-3);

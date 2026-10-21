@@ -3,7 +3,7 @@ import type { Manifold, ManifoldToplevel } from "manifold-3d";
 import type { Params } from "../../types";
 import { loadManifold } from "../manifold";
 import { buildPart, msg } from "../parts";
-import { CLEAR, MAX_SIZE, WALL } from "../rules";
+import { CLEAR, MAX_SIZE, WALL, WIRE_CLEAR } from "../rules";
 import { ANTENNA_BY_ID } from "../../antennas";
 import { buildPack } from "../../build";
 import { bendRecipes, dieFor } from "../../recipe";
@@ -46,7 +46,7 @@ describe("cut board", () => {
   const h = hole(1, 0.1, [0.03, 0.07]), spec = cutBoards([h])[0];
   let solid: Manifold;
   beforeAll(() => { solid = spec.build(M)[0]; });
-  const T = Math.max(5, Math.max(2, 1 + CLEAR) + 2 * WALL), zc = T / 2;
+  const T = Math.max(5, 1 + WIRE_CLEAR + 2 * WALL), zc = T / 2;
   it("wire goes in to the cut length and no further", () => {
     expect(spec.id).toBe("cut-board");
     expect(spec.use).toBe("jig");
@@ -59,7 +59,7 @@ describe("cut board", () => {
     const bb = solid.boundingBox(), y = (bb.min[1] + bb.max[1]) / 2;
     for (const at of [30, 70]) {
       expect(inside(solid, along(M, [at, y, zc], [0, 0, 1], 0, zc + 0.5, 0.4)), `slit at ${at}`).toBeLessThan(1e-3);
-      const b = ball(M, [at + 4, y, zc + 2.5], 0.6);   // beside the slit the roof is plastic
+      const b = ball(M, [at + 4, y, zc + 3.1], 0.4);   // beside the slit the roof is plastic
       expect(inside(solid, b)).toBeGreaterThan(0.9 * b.volume());
     }
   });

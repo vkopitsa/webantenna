@@ -1,5 +1,7 @@
 /** Fixed geometry rules for printed parts, in mm. There are no printer settings: these suit any common FDM printer. */
-export const CLEAR = 0.3;          // added to every wire, tube and boom diameter
+export const CLEAR = 0.3;          // added to every tube and boom diameter, and to wires in open shaping grooves (bend jigs, formers)
+export const WIRE_CLEAR = 2.5;     // added to a wire's diameter where it passes through a printed hole or slot: small FDM holes
+                                   // print up to ~1 mm undersize, so Ø2 wire needs a Ø4.5 hole
 export const WALL = 2;             // minimum wall
 export const INSULATE = 2;         // plastic between conductors that must not touch
 export const MAX_SIZE = 180;       // largest extent printed in one piece

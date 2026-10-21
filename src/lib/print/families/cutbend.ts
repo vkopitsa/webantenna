@@ -4,7 +4,7 @@ import { cutList, pieces, type CutRow, type Msg, type Piece } from "../../build"
 import { bendRecipes, trimmedTags, type Die, type Recipe } from "../../recipe";
 import { msg, type PartSpec } from "../parts";
 import { bendPaths, type P2 } from "../paths";
-import { CLEAR, MAX_SIZE, WALL, mm } from "../rules";
+import { CLEAR, MAX_SIZE, WALL, WIRE_CLEAR, mm } from "../rules";
 import { box, digits, type V3 } from "../shapes";
 import { D_MAX } from "./bend";
 
@@ -85,7 +85,7 @@ export function boardHoles(rows: CutRow[], recipes: Recipe[]): Hole[] {
   return out.map((h, i) => ({ ...h, n: i + 1 }));
 }
 
-const holeD = (h: Hole) => Math.max(2, mm(h.dia) + CLEAR);
+const holeD = (h: Hole) => mm(h.dia) + WIRE_CLEAR;
 const pitch = (h: Hole) => Math.max(holeD(h) + 2 * WALL, MIN_PITCH);
 
 /** One board: holes side by side along y, open at x = 0, blind at x = cut, axis at mid-thickness. */
@@ -177,7 +177,7 @@ function scale(M: M, o: number, s0: number, sLong: number, s1: number, zTop: num
 /** Lever bender in use position (z up): base z 0..8 with the vise tab below and the back-stop block above, lever z 8..16
  *  lying on it, the wire on the lever (centre at wireZ). The lever stops against the head of a bolt in a stop hole. */
 export function leverSolids(M: M, g: BenderGeom): { base: Manifold; lever: Manifold; wireZ: number } {
-  const { die, dMm: d } = g, r = die.r, w = d + CLEAR, yw = -(r + d / 2), top = BASE_T + LEVER_T;
+  const { die, dMm: d } = g, r = die.r, w = d + WIRE_CLEAR, yw = -(r + d / 2), top = BASE_T + LEVER_T;
   const headR = HEAD[die.bolt] / 2, [af, nutH] = NUT[die.bolt];
   const X0 = -92, X1 = 58, Y0 = -32, Y1 = 58;
   // base: plate, engraved (stop-edge lines, tangent line), then tab and block added, then holes
@@ -185,7 +185,8 @@ export function leverSolids(M: M, g: BenderGeom): { base: Manifold; lever: Manif
     ...scale(M, headR, 49, 46, 55, BASE_T),
     line(M, [g.tangentX, 14], [g.tangentX, STOP_R - die.hole / 2 - 2], BASE_T),
   ]));
-  const yR = yw + w / 2, yL = yw - w / 2, bTop = top + w + 1.5;
+  // the die-side (+y) wall keeps the wire on the die; the extra clearance is all on the −y side
+  const yR = yw + (d + CLEAR) / 2, yL = yR - w, bTop = top + w + 1.5;
   base = base.add(box(M, [-90, Y0, -25], [-50, Y0 + 12, 0])).add(box(M, [-30, Y0, BASE_T], [-15, yR + WALL, bTop]));
   // entry groove: open on top, its +y wall flared at 45° above the wire so the base prints on its −y edge
   const slot = M.Manifold.hull(([[yL, top], [yR, top], [yR, top + w], [yR + bTop + 1 - top - w, bTop + 1], [yL, bTop + 1]] as P2[])
@@ -236,7 +237,7 @@ export function benderPlate(g: BenderGeom): PartSpec {
 }
 
 function plate(M: M, g: BenderGeom): Manifold {
-  const { die, dMm: dw } = g, r = die.r, w = dw + CLEAR, yw = -(r + dw / 2), T = PLATE_T, kR = CSK[die.bolt] / 2 + 0.2;
+  const { die, dMm: dw } = g, r = die.r, w = dw + WIRE_CLEAR, yw = -(r + dw / 2), yR = yw + (dw + CLEAR) / 2, yL = yR - w, T = PLATE_T, kR = CSK[die.bolt] / 2 + 0.2;
   // trap pin outside the wire, upstream of the die; moved out further only if the two countersunk heads would touch
   const xt = -(2 * r + dw + CLEAR + r), yt = -Math.max(2 * r + dw + CLEAR, Math.sqrt(Math.max(0, (2 * kR + 0.6) ** 2 - xt * xt)));
   const csk = (x: number, y: number) => M.Manifold.union([
@@ -249,9 +250,9 @@ function plate(M: M, g: BenderGeom): Manifold {
     ...scale(M, r + dw / 2, 18, 14, 30, T),
     line(M, [g.tangentX, -die.hole / 2 - 0.3], [g.tangentX, -36], T), line(M, [g.tangentX, die.hole / 2 + 1], [g.tangentX, 12], T),
   ]));
-  s = s.add(box(M, [x0, yw - w / 2 - 6, T], [x1, yw + w / 2 + WALL, bTop]));
+  s = s.add(box(M, [x0, yL - 6, T], [x1, yR + WALL, bTop]));
   return s.subtract(M.Manifold.union([
-    box(M, [x0 - 1, yw - w / 2, T], [x1 + 1, yw + w / 2, bTop + 1]),
+    box(M, [x0 - 1, yL, T], [x1 + 1, yR, bTop + 1]),   // entry groove, widened away from the die like the lever's
     csk(0, 0), csk(xt, yt), ...g.stops.map((p) => csk(p.c[0], p.c[1])),
   ]));
 }

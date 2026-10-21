@@ -258,7 +258,7 @@ const forkShape = (M: ManifoldToplevel, gap: number): Manifold => M.Manifold.cub
 
 /** One groove per frame along a (ρ, z) path (mm), centred on the wire: n copies round the axis. */
 export function frameGrooves(M: ManifoldToplevel, path: Pt[], n: number, wireD: number): Manifold {
-  const one = M.Manifold.union(path.slice(1).map((q, i) => channel(M, [path[i][0], 0, path[i][1]], [q[0], 0, q[1]], wireD)));
+  const one = M.Manifold.union(path.slice(1).map((q, i) => channel(M, [path[i][0], 0, path[i][1]], [q[0], 0, q[1]], wireD, CLEAR)));
   return M.Manifold.union(Array.from({ length: n }, (_, k) => one.rotate([0, 0, (360 * k) / n])));
 }
 
@@ -333,7 +333,7 @@ export function skyconeParts(d: Design, sheetT = 0.3, sleeve = false): PartSpec[
         const gnd = lay(g.ground, gx0 - Math.min(...xs(g.ground)), P - Math.min(...ys(g.ground)));
         const W = Math.max(...xs(gnd)) + P, H = Math.max(...ys(hot), ...ys(gnd)) + P;
         if (W > MAX_SIZE || H > MAX_SIZE) throw new PartError(msg("Too large to print in one piece: {0}", { len: Math.max(W, H) / 1000 }));
-        const groove = (pts: Pt[]) => pts.slice(1).map((q, i) => channel(M, [pts[i][0], pts[i][1], 0], [q[0], q[1], 0], wireD)).concat(pts.map((q) => M.Manifold.sphere((wireD + CLEAR) / 2, 16).translate([q[0], q[1], 0])));
+        const groove = (pts: Pt[]) => pts.slice(1).map((q, i) => channel(M, [pts[i][0], pts[i][1], 0], [q[0], q[1], 0], wireD, CLEAR)).concat(pts.map((q) => M.Manifold.sphere((wireD + CLEAR) / 2, 16).translate([q[0], q[1], 0])));
         return [M.Manifold.cube([W, H, T]).translate([0, 0, -T]).subtract(M.Manifold.union([...groove(hot), ...groove(gnd)]))];
       },
     });
